@@ -110,6 +110,16 @@ export type EventSource = {
   memo: string;
 };
 
+export type NewsCategory = "update" | "school" | "warning";
+
+export type News = {
+  id: string;
+  title: string;
+  content: string;
+  category: NewsCategory;
+  createdAt: string;
+};
+
 export type BoardNoteType = "quiz" | "prep" | "homework" | "item" | "notice";
 
 export type BoardNote = {
@@ -165,6 +175,7 @@ export type SchoolData = {
   materials: StudyMaterial[];
   events: SchoolEvent[];
   eventSources: EventSource[];
+  news: News[];
   boardMemos: BoardMemo[];
   settings: SchoolSettings;
 };

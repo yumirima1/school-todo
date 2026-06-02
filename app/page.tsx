@@ -13,6 +13,7 @@ import {
   PackageCheck,
   RefreshCw,
   School,
+  Wrench,
 } from "lucide-react";
 import { TimetableSlot } from "@/components/school-cards";
 import {
@@ -26,12 +27,14 @@ import {
   dayNames,
   daysBetween,
   getDayOfWeek,
+  getSchoolTargetDate,
+  getSchoolTargetLabel,
   toDateInputValue,
 } from "@/lib/date";
 import { matchMaterialsForPack } from "@/lib/materials";
-import { buildTomorrowPacks } from "@/lib/prep";
+import { buildTargetPacks } from "@/lib/prep";
 import { useSchoolData } from "@/lib/school-data";
-import { EventSource } from "@/lib/types";
+import { EventSource, News } from "@/lib/types";
 
 type ChikuzenEventsResponse = {
   checkedAt: string;
@@ -39,12 +42,22 @@ type ChikuzenEventsResponse = {
   error?: string;
 };
 
-function formatTomorrowLabel(date: Date, dayLabel: string) {
+function formatTargetDateLabel(date: Date, dayLabel: string) {
   return `${date.getMonth() + 1}月${date.getDate()}日（${dayLabel}）`;
 }
 
 function sourceLink(source: EventSource) {
   return source.pdfUrl || source.url;
+}
+
+function NewsIcon({ news }: { news: News }) {
+  if (news.category === "warning") {
+    return <AlertTriangle size={15} aria-hidden="true" />;
+  }
+  if (news.category === "school") {
+    return <CalendarClock size={15} aria-hidden="true" />;
+  }
+  return <Wrench size={15} aria-hidden="true" />;
 }
 
 export default function TodayPage() {
@@ -53,40 +66,44 @@ export default function TodayPage() {
   const [schoolFetchMessage, setSchoolFetchMessage] = useState("");
   const [discoveredSources, setDiscoveredSources] = useState<EventSource[]>([]);
 
-  const today = new Date();
-  const tomorrow = new Date(today);
-  tomorrow.setDate(today.getDate() + 1);
-  const tomorrowDow = getDayOfWeek(tomorrow);
-  const tomorrowLabel = tomorrowDow ? dayNames[tomorrowDow] : "日曜";
-  const tomorrowValue = toDateInputValue(tomorrow);
+  const now = new Date();
+  const targetDate = getSchoolTargetDate(now);
+  const targetLabel = getSchoolTargetLabel(now);
+  const targetDow = getDayOfWeek(targetDate);
+  const targetDayLabel = targetDow ? dayNames[targetDow] : "日曜";
+  const targetValue = toDateInputValue(targetDate);
   const className = `${data.settings.grade}${data.settings.className}`;
   const classLabel = `${data.settings.schoolName} ${className}`;
 
   const boardMemo =
     data.boardMemos.find(
-      (memo) => memo.date === tomorrowValue && memo.className === className,
-    ) ?? data.boardMemos.find((memo) => memo.date === tomorrowValue);
+      (memo) => memo.date === targetValue && memo.className === className,
+    ) ?? data.boardMemos.find((memo) => memo.date === targetValue);
 
   const weekdayTimetable =
-    tomorrowDow === 0
+    targetDow === 0
       ? []
       : data.timetable
-          .filter((item) => item.dayOfWeek === tomorrowDow)
+          .filter((item) => item.dayOfWeek === targetDow)
           .sort((a, b) => a.period - b.period);
-  const nextTimetable = boardMemo
+  const targetTimetable = boardMemo
     ? boardMemoToTimetable(boardMemo, subjectById)
     : weekdayTimetable;
 
-  const tomorrowPacks = buildTomorrowPacks(nextTimetable, subjectById);
-  const hasTomorrowItems = tomorrowPacks.some((pack) => pack.items.length);
+  const targetPacks = buildTargetPacks(targetTimetable, subjectById);
+  const hasTargetItems = targetPacks.some((pack) => pack.items.length);
 
-  const todayAssignments = data.assignments
+  const targetAssignments = data.assignments
     .filter(
       (assignment) =>
-        daysBetween(assignment.dueDate) === 0 &&
+        assignment.dueDate === targetValue &&
         !["done", "submitted"].includes(assignment.status),
     )
     .sort((a, b) => a.priority.localeCompare(b.priority));
+
+  const latestNews = [...data.news]
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+    .slice(0, 5);
 
   const countdownEvents = data.events
     .map((event) => ({ event, daysLeft: daysBetween(event.date) }))
@@ -158,7 +175,7 @@ export default function TodayPage() {
               {classLabel}
             </h1>
             <p className="mt-1 text-sm text-cyan-100">
-              明日: {formatTomorrowLabel(tomorrow, tomorrowLabel)}
+              {targetLabel}: {formatTargetDateLabel(targetDate, targetDayLabel)}
             </p>
           </div>
         </div>
@@ -166,7 +183,7 @@ export default function TodayPage() {
 
       <section className="grid grid-cols-2 gap-3 max-[420px]:grid-cols-1">
         <Card
-          title="明日の時間割"
+          title={`${targetLabel}の時間割`}
           action={
             <Link
               className={secondaryButtonClass}
@@ -181,9 +198,9 @@ export default function TodayPage() {
               黒板メモ優先
             </p>
           )}
-          {nextTimetable.length ? (
+          {targetTimetable.length ? (
             <div className="grid gap-2">
-              {nextTimetable.map((item) => (
+              {targetTimetable.map((item) => (
                 <TimetableSlot
                   key={item.id}
                   item={item}
@@ -192,12 +209,12 @@ export default function TodayPage() {
               ))}
             </div>
           ) : (
-            <EmptyState text="明日の時間割は未登録です。" />
+            <EmptyState text={`${targetLabel}の時間割は未登録です。`} />
           )}
         </Card>
 
         <Card
-          title="明日の持ち物"
+          title={`${targetLabel}の持ち物`}
           action={
             <Link className={secondaryButtonClass} href="/materials">
               教材
@@ -205,9 +222,9 @@ export default function TodayPage() {
             </Link>
           }
         >
-          {hasTomorrowItems ? (
+          {hasTargetItems ? (
             <div className="grid gap-2">
-              {tomorrowPacks.map((pack) => {
+              {targetPacks.map((pack) => {
                 const materialMatches = matchMaterialsForPack(
                   pack,
                   data.materials,
@@ -268,23 +285,23 @@ export default function TodayPage() {
               })}
             </div>
           ) : (
-            <EmptyState text="明日の持ち物は未登録です。" />
+            <EmptyState text={`${targetLabel}の持ち物は未登録です。`} />
           )}
         </Card>
       </section>
 
       <section className="mt-4 grid gap-4 lg:grid-cols-[0.85fr_1.15fr]">
         <Card
-          title="今日提出のもの"
+          title={`${targetLabel}提出のもの`}
           action={
             <Link className={secondaryButtonClass} href="/assignments">
               提出物
             </Link>
           }
         >
-          {todayAssignments.length ? (
+          {targetAssignments.length ? (
             <ul className="grid gap-2">
-              {todayAssignments.map((assignment) => (
+              {targetAssignments.map((assignment) => (
                 <li
                   key={assignment.id}
                   className="flex items-start gap-2 rounded-lg border border-rose-300/30 bg-rose-500/[0.08] p-3 text-sm font-semibold text-white"
@@ -299,7 +316,7 @@ export default function TodayPage() {
               ))}
             </ul>
           ) : (
-            <EmptyState text="今日は提出物なし" />
+            <EmptyState text={`${targetLabel}は提出物なし`} />
           )}
         </Card>
 
@@ -416,6 +433,35 @@ export default function TodayPage() {
             </div>
           ) : (
             <EmptyState text="ボタンを押すと筑前高校のお知らせから行事予定PDFを探します。" />
+          )}
+        </Card>
+      </section>
+
+      <section className="mt-4">
+        <Card
+          title="School Dock News"
+          action={
+            <Link className={secondaryButtonClass} href="/news">
+              もっと見る
+            </Link>
+          }
+        >
+          {latestNews.length ? (
+            <ul className="grid gap-2">
+              {latestNews.map((newsItem) => (
+                <li
+                  key={newsItem.id}
+                  className="flex items-start gap-2 rounded-md border border-white/10 bg-[#0d141c] px-3 py-2 text-sm text-slate-200"
+                >
+                  <span className="mt-0.5 shrink-0 text-cyan-200">
+                    <NewsIcon news={newsItem} />
+                  </span>
+                  <span className="break-words">{newsItem.title}</span>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <EmptyState text="Newsはまだありません。" />
           )}
         </Card>
       </section>

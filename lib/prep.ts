@@ -16,7 +16,7 @@ export function splitItems(value: string) {
     .filter(Boolean);
 }
 
-export function buildTomorrowPacks(
+export function buildTargetPacks(
   timetable: TimetableItem[],
   subjectById: Map<string, Subject>,
 ): PrepPack[] {
@@ -38,4 +38,11 @@ export function buildTomorrowPacks(
       items,
     };
   });
+}
+
+export function buildTomorrowPacks(
+  timetable: TimetableItem[],
+  subjectById: Map<string, Subject>,
+): PrepPack[] {
+  return buildTargetPacks(timetable, subjectById);
 }

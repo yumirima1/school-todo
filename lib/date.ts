@@ -1,5 +1,7 @@
 import { DayOfWeek, SchoolSettings } from "@/lib/types";
 
+export const SCHOOL_DAY_SWITCH_HOUR = 14;
+
 export const dayNames: Record<DayOfWeek, string> = {
   1: "月曜",
   2: "火曜",
@@ -46,6 +48,18 @@ export function getDayOfWeek(date = new Date()): DayOfWeek | 0 {
     return day as DayOfWeek;
   }
   return 0;
+}
+
+export function getSchoolTargetDate(now = new Date()) {
+  const targetDate = new Date(now);
+  if (now.getHours() >= SCHOOL_DAY_SWITCH_HOUR) {
+    targetDate.setDate(targetDate.getDate() + 1);
+  }
+  return targetDate;
+}
+
+export function getSchoolTargetLabel(now = new Date()) {
+  return now.getHours() >= SCHOOL_DAY_SWITCH_HOUR ? "明日" : "今日";
 }
 
 export function getNextSchoolDate(settings: SchoolSettings, date = new Date()) {

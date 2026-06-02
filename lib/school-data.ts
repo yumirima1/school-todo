@@ -5,6 +5,7 @@ import {
   Assignment,
   BoardMemo,
   EventSource,
+  News,
   RecurringTask,
   RecurringTaskCategory,
   SchoolData,
@@ -229,6 +230,33 @@ const sampleBoardMemo: BoardMemo = {
   ],
 };
 
+const defaultNews: News[] = [
+  {
+    id: "news-board-ocr",
+    title: "黒板OCRを追加しました",
+    content:
+      "黒板写真から無料OCRで文字を抽出し、黒板メモへ反映できるようになりました。",
+    category: "update",
+    createdAt: "2026-06-03T08:00:00+09:00",
+  },
+  {
+    id: "news-material-library",
+    title: "教材ライブラリを実装しました",
+    content:
+      "教材画像を登録し、対象日の持ち物を画像付きで確認できるようになりました。",
+    category: "update",
+    createdAt: "2026-06-02T18:00:00+09:00",
+  },
+  {
+    id: "news-event-import",
+    title: "行事取込を実装しました",
+    content:
+      "筑前高校のお知らせから行事予定PDFを検出し、School Dockへ保存できるようになりました。",
+    category: "school",
+    createdAt: "2026-06-02T17:00:00+09:00",
+  },
+];
+
 export const defaultSchoolData: SchoolData = {
   subjects: defaultSubjects,
   timetable: [],
@@ -237,6 +265,7 @@ export const defaultSchoolData: SchoolData = {
   materials: [],
   events: [],
   eventSources: [],
+  news: defaultNews,
   boardMemos: [sampleBoardMemo],
   settings: {
     schoolName: "筑前高校",
@@ -322,6 +351,7 @@ function normalizeData(data: Partial<SchoolData>): SchoolData {
     materials: data.materials ?? [],
     events: data.events ?? [],
     eventSources,
+    news: data.news ?? defaultSchoolData.news,
     boardMemos: data.boardMemos ?? defaultSchoolData.boardMemos,
     settings: { ...defaultSchoolData.settings, ...data.settings },
   };
@@ -499,6 +529,27 @@ export function useSchoolData() {
     }));
   }, []);
 
+  const upsertNews = useCallback((input: News) => {
+    setData((current) => {
+      const id = input.id || createId("news");
+      const nextNews = { ...input, id };
+      return {
+        ...current,
+        news: [
+          ...current.news.filter((newsItem) => newsItem.id !== id),
+          nextNews,
+        ].sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
+      };
+    });
+  }, []);
+
+  const removeNews = useCallback((id: string) => {
+    setData((current) => ({
+      ...current,
+      news: current.news.filter((newsItem) => newsItem.id !== id),
+    }));
+  }, []);
+
   const upsertBoardMemo = useCallback((input: BoardMemo) => {
     setData((current) => {
       const id = input.id || createId("board");
@@ -537,6 +588,8 @@ export function useSchoolData() {
     removeEvent,
     upsertEventSource,
     removeEventSource,
+    upsertNews,
+    removeNews,
     upsertBoardMemo,
     removeBoardMemo,
   };
