@@ -5,6 +5,8 @@ import {
   Assignment,
   BoardMemo,
   EventSource,
+  RecurringTask,
+  RecurringTaskCategory,
   SchoolData,
   SchoolEvent,
   SchoolSettings,
@@ -14,78 +16,159 @@ import {
 
 const storageKey = "school-dock:data:v1";
 
+function recurring(
+  category: RecurringTaskCategory,
+  title: string,
+  description = "",
+): RecurringTask {
+  return {
+    id: `default-${category}-${title}`,
+    title,
+    description,
+    category,
+    active: true,
+  };
+}
+
 const defaultSubjects: Subject[] = [
   {
     id: "japanese",
-    name: "国語",
+    name: "現代の国語",
+    shortName: "現国",
     color: "#ef4444",
-    fixedItems: "教科書、ノート、漢字ノート",
+    items: "教科書、ノート、漢字ノート",
+    recurringAssignments: [],
+    recurringQuizzes: [
+      recurring("quiz", "漢字テスト"),
+      recurring("quiz", "現代文単語テスト"),
+    ],
+    recurringPreparations: [],
   },
   {
     id: "math",
     name: "数学",
+    shortName: "数学",
     color: "#38bdf8",
-    fixedItems: "教科書、ノート、ワーク、定規",
+    items: "教科書、ノート、ワーク、定規",
+    recurringAssignments: [],
+    recurringQuizzes: [],
+    recurringPreparations: [],
   },
   {
     id: "english",
     name: "英語",
+    shortName: "英語",
     color: "#22c55e",
-    fixedItems: "教科書、ノート、単語帳",
+    items: "教科書、ノート、単語帳",
+    recurringAssignments: [],
+    recurringQuizzes: [],
+    recurringPreparations: [],
   },
   {
     id: "science",
     name: "理科",
+    shortName: "理科",
     color: "#a78bfa",
-    fixedItems: "教科書、ノート、資料集",
+    items: "教科書、ノート、資料集",
+    recurringAssignments: [],
+    recurringQuizzes: [],
+    recurringPreparations: [],
   },
   {
     id: "social",
     name: "社会",
+    shortName: "社会",
     color: "#f59e0b",
-    fixedItems: "教科書、ノート、資料集",
+    items: "教科書、ノート、資料集",
+    recurringAssignments: [],
+    recurringQuizzes: [],
+    recurringPreparations: [],
   },
   {
     id: "pe",
     name: "体育",
+    shortName: "体育",
     color: "#fb7185",
-    fixedItems: "体操服、タオル",
+    items: "体操服、タオル",
+    recurringAssignments: [],
+    recurringQuizzes: [],
+    recurringPreparations: [],
   },
   {
     id: "communication-1",
-    name: "コミュⅠ",
+    name: "英語コミュニケーションⅠ",
+    shortName: "英コミ",
     color: "#14b8a6",
-    fixedItems: "教科書、ノート、単語帳",
+    items: "教科書、ノート、単語帳",
+    recurringAssignments: [recurring("assignment", "Seek Next 週末課題")],
+    recurringQuizzes: [recurring("quiz", "英単語テスト")],
+    recurringPreparations: [recurring("preparation", "VQ予習")],
   },
   {
     id: "public",
     name: "公共",
+    shortName: "公共",
     color: "#f97316",
-    fixedItems: "教科書、ノート",
+    items: "教科書、ノート",
+    recurringAssignments: [],
+    recurringQuizzes: [],
+    recurringPreparations: [],
   },
   {
     id: "logic-expression-1",
     name: "論理・表現Ⅰ",
+    shortName: "論表",
     color: "#84cc16",
-    fixedItems: "教科書、ノート、ワーク",
+    items: "教科書、ノート、ワーク",
+    recurringAssignments: [],
+    recurringQuizzes: [],
+    recurringPreparations: [],
   },
   {
     id: "math-1",
     name: "数学Ⅰ",
+    shortName: "数Ⅰ",
     color: "#0ea5e9",
-    fixedItems: "教科書、ノート、問題集",
+    items: "教科書、ノート、問題集",
+    recurringAssignments: [recurring("assignment", "数学週末課題")],
+    recurringQuizzes: [],
+    recurringPreparations: [],
   },
   {
     id: "language-culture",
     name: "言語文化",
+    shortName: "言文",
     color: "#f43f5e",
-    fixedItems: "教科書、ノート、古典単語帳",
+    items: "教科書、ノート、古典単語帳",
+    recurringAssignments: [],
+    recurringQuizzes: [
+      recurring(
+        "quiz",
+        "古文単語テスト",
+        "合格ライン70%。古文単語351対応。",
+      ),
+    ],
+    recurringPreparations: [],
   },
   {
     id: "basic-physics",
     name: "物理基礎",
+    shortName: "物基",
     color: "#8b5cf6",
-    fixedItems: "教科書、ノート、問題集",
+    items: "教科書、ノート、問題集",
+    recurringAssignments: [],
+    recurringQuizzes: [],
+    recurringPreparations: [],
+  },
+  {
+    id: "school-common",
+    name: "学校共通",
+    shortName: "共通",
+    color: "#eab308",
+    items: "",
+    recurringAssignments: [recurring("assignment", "学校提出書類")],
+    recurringQuizzes: [],
+    recurringPreparations: [],
   },
 ];
 
@@ -172,14 +255,48 @@ function normalizeData(data: Partial<SchoolData>): SchoolData {
   const defaultSubjectById = new Map(
     defaultSchoolData.subjects.map((subject) => [subject.id, subject]),
   );
-  const subjects = data.subjects?.length
-    ? data.subjects.map((subject) => ({
-        ...defaultSubjectById.get(subject.id),
-        ...subject,
-        fixedItems:
-          subject.fixedItems ?? defaultSubjectById.get(subject.id)?.fixedItems ?? "",
-      }))
-    : defaultSchoolData.subjects;
+  const storedSubjectById = new Map(
+    (data.subjects ?? []).map((subject) => [subject.id, subject]),
+  );
+  const subjects = defaultSchoolData.subjects.map((defaultSubject) => {
+    const storedSubject = storedSubjectById.get(defaultSubject.id);
+    if (!storedSubject) {
+      return defaultSubject;
+    }
+    return {
+      ...defaultSubject,
+      ...storedSubject,
+      shortName: storedSubject.shortName ?? defaultSubject.shortName,
+      items:
+        storedSubject.items ??
+        storedSubject.fixedItems ??
+        defaultSubject.items ??
+        defaultSubject.fixedItems ??
+        "",
+      recurringAssignments:
+        storedSubject.recurringAssignments ??
+        defaultSubject.recurringAssignments ??
+        [],
+      recurringQuizzes:
+        storedSubject.recurringQuizzes ?? defaultSubject.recurringQuizzes ?? [],
+      recurringPreparations:
+        storedSubject.recurringPreparations ??
+        defaultSubject.recurringPreparations ??
+        [],
+    };
+  });
+  for (const storedSubject of data.subjects ?? []) {
+    if (!defaultSubjectById.has(storedSubject.id)) {
+      subjects.push({
+        ...storedSubject,
+        shortName: storedSubject.shortName ?? storedSubject.name,
+        items: storedSubject.items ?? storedSubject.fixedItems ?? "",
+        recurringAssignments: storedSubject.recurringAssignments ?? [],
+        recurringQuizzes: storedSubject.recurringQuizzes ?? [],
+        recurringPreparations: storedSubject.recurringPreparations ?? [],
+      });
+    }
+  }
 
   return {
     subjects,

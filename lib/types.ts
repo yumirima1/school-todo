@@ -1,8 +1,23 @@
 export type Subject = {
   id: string;
   name: string;
+  shortName: string;
   color: string;
-  fixedItems: string;
+  items: string;
+  fixedItems?: string;
+  recurringAssignments: RecurringTask[];
+  recurringQuizzes: RecurringTask[];
+  recurringPreparations: RecurringTask[];
+};
+
+export type RecurringTaskCategory = "assignment" | "quiz" | "preparation";
+
+export type RecurringTask = {
+  id: string;
+  title: string;
+  description: string;
+  category: RecurringTaskCategory;
+  active: boolean;
 };
 
 export type DayOfWeek = 1 | 2 | 3 | 4 | 5 | 6;

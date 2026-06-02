@@ -23,7 +23,7 @@ export function buildTomorrowPacks(
     const subject = subjectById.get(lesson.subjectId);
     const items = Array.from(
       new Set([
-        ...splitItems(subject?.fixedItems ?? ""),
+        ...splitItems(subject?.items ?? subject?.fixedItems ?? ""),
         ...splitItems(lesson.items),
       ]),
     );

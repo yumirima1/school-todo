@@ -23,6 +23,7 @@ import {
 } from "@/lib/date";
 import { boardNoteTypeLabels } from "@/lib/labels";
 import { buildTomorrowPacks } from "@/lib/prep";
+import { getActiveRecurringGroups } from "@/lib/recurring";
 import { useSchoolData } from "@/lib/school-data";
 
 export default function TodayPage() {
@@ -74,6 +75,7 @@ export default function TodayPage() {
     new Set(tomorrowPacks.flatMap((pack) => pack.items)),
   );
   const boardAttentionGroups = getBoardAttentionGroups(boardMemo);
+  const recurringGroups = getActiveRecurringGroups(data.subjects);
   const classLabel = `${data.settings.schoolName} ${data.settings.grade}${data.settings.className}`;
 
   return (
@@ -178,6 +180,41 @@ export default function TodayPage() {
                 <span className="text-xs text-slate-400">提出物</span>
               </div>
             </div>
+          </Card>
+
+          <Card title="固定で確認するもの">
+            {recurringGroups.length ? (
+              <div className="grid gap-2 sm:grid-cols-2">
+                {recurringGroups.map((group) => (
+                  <article
+                    key={group.subjectId}
+                    className="rounded-lg border border-white/10 bg-[#0d141c] p-3"
+                  >
+                    <div className="mb-2 flex items-center gap-2">
+                      <span
+                        className="size-2 rounded-full"
+                        style={{ backgroundColor: group.subjectColor }}
+                      />
+                      <h2 className="text-sm font-semibold text-white">
+                        {group.subjectShortName}
+                      </h2>
+                    </div>
+                    <ul className="grid gap-1.5">
+                      {group.tasks.map((task) => (
+                        <li
+                          key={task.id}
+                          className="break-words text-sm text-slate-300"
+                        >
+                          {task.title}
+                        </li>
+                      ))}
+                    </ul>
+                  </article>
+                ))}
+              </div>
+            ) : (
+              <EmptyState text="教科ページで固定提出物・小テスト・予習を登録できます。" />
+            )}
           </Card>
         </div>
 

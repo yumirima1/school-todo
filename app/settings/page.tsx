@@ -128,10 +128,10 @@ export default function SettingsPage() {
                   固定持ち物
                   <textarea
                     className={`${inputClass} min-h-20 resize-none`}
-                    value={subject.fixedItems}
+                    value={subject.items}
                     onChange={(event) =>
                       updateSubject(subject.id, {
-                        fixedItems: event.target.value,
+                        items: event.target.value,
                       })
                     }
                     placeholder="教科書、ノート、ワーク"

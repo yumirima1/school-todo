@@ -4,6 +4,7 @@ import {
   EventSourceStatus,
   EventSourceType,
   Priority,
+  RecurringTaskCategory,
   SchoolEventType,
   StudyTaskType,
 } from "@/lib/types";
@@ -53,4 +54,10 @@ export const eventSourceStatusLabels: Record<EventSourceStatus, string> = {
   pending: "解析待ち",
   imported: "取込済み",
   failed: "失敗",
+};
+
+export const recurringTaskCategoryLabels: Record<RecurringTaskCategory, string> = {
+  assignment: "固定提出物",
+  quiz: "固定小テスト",
+  preparation: "固定予習",
 };
