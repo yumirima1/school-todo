@@ -6,6 +6,7 @@ import {
   Priority,
   RecurringTaskCategory,
   SchoolEventType,
+  StudyMaterialCategory,
   StudyTaskType,
 } from "@/lib/types";
 
@@ -60,4 +61,13 @@ export const recurringTaskCategoryLabels: Record<RecurringTaskCategory, string> 
   assignment: "固定提出物",
   quiz: "固定小テスト",
   preparation: "固定予習",
+};
+
+export const studyMaterialCategoryLabels: Record<StudyMaterialCategory, string> = {
+  textbook: "教科書",
+  workbook: "ワーク",
+  vocabulary: "単語帳",
+  notebook: "ノート",
+  print: "プリント",
+  other: "その他",
 };

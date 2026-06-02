@@ -25,6 +25,7 @@ import {
   boardNoteTypeLabels,
   recurringTaskCategoryLabels,
 } from "@/lib/labels";
+import { matchMaterialsForPack } from "@/lib/materials";
 import { buildTomorrowPacks } from "@/lib/prep";
 import { getActiveRecurringGroups } from "@/lib/recurring";
 import { useSchoolData } from "@/lib/school-data";
@@ -283,8 +284,8 @@ export default function TodayPage() {
           <Card
             title="明日の持ち物"
             action={
-              <Link className={secondaryButtonClass} href="/settings">
-                固定持ち物
+              <Link className={secondaryButtonClass} href="/materials">
+                教材
                 <PackageCheck size={15} aria-hidden="true" />
               </Link>
             }
@@ -326,6 +327,51 @@ export default function TodayPage() {
                     )}
                   </article>
                 ))}
+                {tomorrowPacks.map((pack) => {
+                  const matches = matchMaterialsForPack(pack, data.materials);
+                  const visualMatches = matches.filter((match) => match.material);
+                  if (!visualMatches.length) {
+                    return null;
+                  }
+
+                  return (
+                    <article
+                      key={`${pack.key}-materials`}
+                      className="rounded-lg border border-cyan-300/20 bg-cyan-400/[0.06] p-3"
+                    >
+                      <div className="mb-3 flex items-center justify-between gap-3">
+                        <h2 className="text-sm font-semibold text-white">
+                          {pack.subjectName}の教材
+                        </h2>
+                        <span className="rounded-md bg-white/10 px-2 py-1 text-xs text-slate-300">
+                          {pack.period}限
+                        </span>
+                      </div>
+                      <div className="grid grid-cols-2 gap-2">
+                        {visualMatches.map((match) => (
+                          <div
+                            key={`${pack.key}-${match.material?.id}`}
+                            className="rounded-md border border-white/10 bg-[#0d141c] p-2"
+                          >
+                            <div className="aspect-[4/3] overflow-hidden rounded bg-black/25">
+                              {match.material?.imageDataUrl ? (
+                                // eslint-disable-next-line @next/next/no-img-element
+                                <img
+                                  src={match.material.imageDataUrl}
+                                  alt={match.material.title}
+                                  className="size-full object-contain"
+                                />
+                              ) : null}
+                            </div>
+                            <p className="mt-2 break-words text-xs font-medium text-white">
+                              {match.material?.shortTitle || match.item}
+                            </p>
+                          </div>
+                        ))}
+                      </div>
+                    </article>
+                  );
+                })}
               </div>
             ) : (
               <EmptyState text="明日の時間割か教科ごとの固定持ち物を登録してください。" />

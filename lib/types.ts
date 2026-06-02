@@ -59,6 +59,24 @@ export type StudyTask = {
   memo: string;
 };
 
+export type StudyMaterialCategory =
+  | "textbook"
+  | "workbook"
+  | "vocabulary"
+  | "notebook"
+  | "print"
+  | "other";
+
+export type StudyMaterial = {
+  id: string;
+  subjectId: string;
+  title: string;
+  shortTitle: string;
+  category: StudyMaterialCategory;
+  imageDataUrl: string;
+  active: boolean;
+};
+
 export type SchoolEventType =
   | "test"
   | "school_event"
@@ -125,6 +143,7 @@ export type SchoolData = {
   timetable: TimetableItem[];
   assignments: Assignment[];
   studyTasks: StudyTask[];
+  materials: StudyMaterial[];
   events: SchoolEvent[];
   eventSources: EventSource[];
   boardMemos: BoardMemo[];

@@ -10,6 +10,7 @@ import {
   SchoolData,
   SchoolEvent,
   SchoolSettings,
+  StudyMaterial,
   Subject,
   TimetableItem,
 } from "@/lib/types";
@@ -233,6 +234,7 @@ export const defaultSchoolData: SchoolData = {
   timetable: [],
   assignments: [],
   studyTasks: [],
+  materials: [],
   events: [],
   eventSources: [],
   boardMemos: [sampleBoardMemo],
@@ -303,6 +305,7 @@ function normalizeData(data: Partial<SchoolData>): SchoolData {
     timetable: data.timetable ?? [],
     assignments: data.assignments ?? [],
     studyTasks: data.studyTasks ?? [],
+    materials: data.materials ?? [],
     events: data.events ?? [],
     eventSources: data.eventSources ?? [],
     boardMemos: data.boardMemos ?? defaultSchoolData.boardMemos,
@@ -418,6 +421,27 @@ export function useSchoolData() {
     }));
   }, []);
 
+  const upsertMaterial = useCallback((input: StudyMaterial) => {
+    setData((current) => {
+      const id = input.id || createId("material");
+      const nextMaterial = { ...input, id };
+      return {
+        ...current,
+        materials: [
+          ...current.materials.filter((material) => material.id !== id),
+          nextMaterial,
+        ].sort((a, b) => a.subjectId.localeCompare(b.subjectId)),
+      };
+    });
+  }, []);
+
+  const removeMaterial = useCallback((id: string) => {
+    setData((current) => ({
+      ...current,
+      materials: current.materials.filter((material) => material.id !== id),
+    }));
+  }, []);
+
   const addEvent = useCallback((input: Omit<SchoolEvent, "id">) => {
     setData((current) => ({
       ...current,
@@ -485,6 +509,8 @@ export function useSchoolData() {
     addAssignment,
     updateAssignment,
     removeAssignment,
+    upsertMaterial,
+    removeMaterial,
     addEvent,
     removeEvent,
     upsertEventSource,

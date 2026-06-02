@@ -3,6 +3,7 @@ import { Subject, TimetableItem } from "@/lib/types";
 export type PrepPack = {
   key: string;
   period: number;
+  subjectId: string;
   subjectName: string;
   subjectColor: string;
   items: string[];
@@ -31,6 +32,7 @@ export function buildTomorrowPacks(
     return {
       key: lesson.id,
       period: lesson.period,
+      subjectId: lesson.subjectId,
       subjectName: subject?.name ?? "未設定",
       subjectColor: subject?.color ?? "#64748b",
       items,
