@@ -7,6 +7,7 @@ import {
   CalendarDays,
   ClipboardList,
   Clock3,
+  Download,
   GraduationCap,
   Home,
   NotebookPen,
@@ -21,6 +22,7 @@ const navItems = [
   { href: "/timetable", label: "時間割", icon: Clock3 },
   { href: "/board", label: "黒板メモ", icon: NotebookPen },
   { href: "/events", label: "行事", icon: Trophy },
+  { href: "/import-events", label: "行事取込", icon: Download },
   { href: "/study", label: "予習", icon: BookOpenCheck },
   { href: "/calendar", label: "予定", icon: CalendarDays },
   { href: "/subjects", label: "教科", icon: GraduationCap },
@@ -49,7 +51,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               </span>
             </Link>
             <span className="rounded-md border border-cyan-300/30 px-2.5 py-1 text-xs font-medium text-cyan-200">
-              Phase 3
+              Phase 4
             </span>
           </div>
         </header>

@@ -1,7 +1,8 @@
 "use client";
 
+import Link from "next/link";
 import { FormEvent, useMemo, useState } from "react";
-import { Save, Trash2 } from "lucide-react";
+import { Download, ExternalLink, Save, Trash2 } from "lucide-react";
 import { EventCountdown } from "@/components/school-cards";
 import {
   Card,
@@ -10,9 +11,15 @@ import {
   iconButtonClass,
   inputClass,
   primaryButtonClass,
+  secondaryButtonClass,
   selectClass,
 } from "@/components/ui";
-import { eventTypeLabels, priorityLabels } from "@/lib/labels";
+import {
+  eventSourceStatusLabels,
+  eventSourceTypeLabels,
+  eventTypeLabels,
+  priorityLabels,
+} from "@/lib/labels";
 import { daysBetween, toDateInputValue } from "@/lib/date";
 import { useSchoolData } from "@/lib/school-data";
 import { Priority, SchoolEvent, SchoolEventType } from "@/lib/types";
@@ -66,101 +73,149 @@ export default function EventsPage() {
       />
 
       <div className="grid gap-4 lg:grid-cols-[0.82fr_1.18fr]">
-        <Card title="行事を登録">
-          <form className="grid gap-3" onSubmit={handleSubmit}>
-            <label className="grid gap-1 text-xs font-medium text-slate-300">
-              行事名
-              <input
-                className={inputClass}
-                value={form.title}
-                onChange={(event) =>
-                  setForm((current) => ({ ...current, title: event.target.value }))
-                }
-                placeholder="期末テスト"
-                required
-              />
-            </label>
-
-            <div className="grid grid-cols-2 gap-3">
+        <div className="grid gap-4 content-start">
+          <Card title="行事を登録">
+            <form className="grid gap-3" onSubmit={handleSubmit}>
               <label className="grid gap-1 text-xs font-medium text-slate-300">
-                日付
+                行事名
                 <input
                   className={inputClass}
-                  type="date"
-                  value={form.date}
+                  value={form.title}
                   onChange={(event) =>
-                    setForm((current) => ({ ...current, date: event.target.value }))
+                    setForm((current) => ({ ...current, title: event.target.value }))
                   }
+                  placeholder="期末テスト"
                   required
                 />
               </label>
+
+              <div className="grid grid-cols-2 gap-3">
+                <label className="grid gap-1 text-xs font-medium text-slate-300">
+                  日付
+                  <input
+                    className={inputClass}
+                    type="date"
+                    value={form.date}
+                    onChange={(event) =>
+                      setForm((current) => ({ ...current, date: event.target.value }))
+                    }
+                    required
+                  />
+                </label>
+                <label className="grid gap-1 text-xs font-medium text-slate-300">
+                  重要度
+                  <select
+                    className={selectClass}
+                    value={form.importance}
+                    onChange={(event) =>
+                      setForm((current) => ({
+                        ...current,
+                        importance: event.target.value as Priority,
+                      }))
+                    }
+                  >
+                    {(["low", "middle", "high"] as Priority[]).map((priority) => (
+                      <option key={priority} value={priority}>
+                        {priorityLabels[priority]}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+
               <label className="grid gap-1 text-xs font-medium text-slate-300">
-                重要度
+                種類
                 <select
                   className={selectClass}
-                  value={form.importance}
+                  value={form.type}
                   onChange={(event) =>
                     setForm((current) => ({
                       ...current,
-                      importance: event.target.value as Priority,
+                      type: event.target.value as SchoolEventType,
                     }))
                   }
                 >
-                  {(["low", "middle", "high"] as Priority[]).map((priority) => (
-                    <option key={priority} value={priority}>
-                      {priorityLabels[priority]}
+                  {(
+                    [
+                      "test",
+                      "school_event",
+                      "club",
+                      "exam",
+                      "other",
+                    ] as SchoolEventType[]
+                  ).map((type) => (
+                    <option key={type} value={type}>
+                      {eventTypeLabels[type]}
                     </option>
                   ))}
                 </select>
               </label>
-            </div>
 
-            <label className="grid gap-1 text-xs font-medium text-slate-300">
-              種類
-              <select
-                className={selectClass}
-                value={form.type}
-                onChange={(event) =>
-                  setForm((current) => ({
-                    ...current,
-                    type: event.target.value as SchoolEventType,
-                  }))
-                }
-              >
-                {(
-                  [
-                    "test",
-                    "school_event",
-                    "club",
-                    "exam",
-                    "other",
-                  ] as SchoolEventType[]
-                ).map((type) => (
-                  <option key={type} value={type}>
-                    {eventTypeLabels[type]}
-                  </option>
+              <label className="grid gap-1 text-xs font-medium text-slate-300">
+                メモ
+                <textarea
+                  className={`${inputClass} min-h-20 resize-none`}
+                  value={form.memo}
+                  onChange={(event) =>
+                    setForm((current) => ({ ...current, memo: event.target.value }))
+                  }
+                  placeholder="集合時間や持ち物など"
+                />
+              </label>
+
+              <button className={primaryButtonClass} type="submit">
+                <Save size={16} aria-hidden="true" />
+                保存
+              </button>
+            </form>
+          </Card>
+
+          <Card
+            title="取り込んだPDF URL"
+            action={
+              <Link className={secondaryButtonClass} href="/import-events">
+                行事取込
+                <Download size={15} aria-hidden="true" />
+              </Link>
+            }
+          >
+            {data.eventSources.length ? (
+              <div className="grid gap-2">
+                {data.eventSources.map((source) => (
+                  <article
+                    key={source.id}
+                    className="rounded-lg border border-white/10 bg-[#0d141c] p-3"
+                  >
+                    <div className="mb-2 flex flex-wrap gap-2">
+                      <span className="rounded-md border border-cyan-300/25 bg-cyan-400/10 px-2 py-1 text-xs font-medium text-cyan-100">
+                        {eventSourceTypeLabels[source.sourceType]}
+                      </span>
+                      <span className="rounded-md border border-white/10 bg-white/5 px-2 py-1 text-xs text-slate-300">
+                        {eventSourceStatusLabels[source.status]}
+                      </span>
+                    </div>
+                    <Link
+                      className="inline-flex max-w-full items-center gap-1 break-all text-xs text-cyan-200 underline-offset-4 hover:underline"
+                      href={source.url}
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      {source.url}
+                      <ExternalLink size={13} aria-hidden="true" />
+                    </Link>
+                    {source.memo && (
+                      <p className="mt-2 break-words text-xs text-slate-400">
+                        {source.memo}
+                      </p>
+                    )}
+                  </article>
                 ))}
-              </select>
-            </label>
-
-            <label className="grid gap-1 text-xs font-medium text-slate-300">
-              メモ
-              <textarea
-                className={`${inputClass} min-h-20 resize-none`}
-                value={form.memo}
-                onChange={(event) =>
-                  setForm((current) => ({ ...current, memo: event.target.value }))
-                }
-                placeholder="集合時間や持ち物など"
-              />
-            </label>
-
-            <button className={primaryButtonClass} type="submit">
-              <Save size={16} aria-hidden="true" />
-              保存
-            </button>
-          </form>
-        </Card>
+              </div>
+            ) : (
+              <EmptyState text="行事予定PDFのURLはまだ保存されていません。" />
+            )}
+          </Card>
+        </div>
 
         <Card title="カウントダウン一覧">
           {sortedEvents.length ? (

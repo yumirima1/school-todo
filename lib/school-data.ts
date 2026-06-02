@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Assignment,
   BoardMemo,
+  EventSource,
   SchoolData,
   SchoolEvent,
   SchoolSettings,
@@ -150,6 +151,7 @@ export const defaultSchoolData: SchoolData = {
   assignments: [],
   studyTasks: [],
   events: [],
+  eventSources: [],
   boardMemos: [sampleBoardMemo],
   settings: {
     schoolName: "筑前高校",
@@ -185,6 +187,7 @@ function normalizeData(data: Partial<SchoolData>): SchoolData {
     assignments: data.assignments ?? [],
     studyTasks: data.studyTasks ?? [],
     events: data.events ?? [],
+    eventSources: data.eventSources ?? [],
     boardMemos: data.boardMemos ?? defaultSchoolData.boardMemos,
     settings: { ...defaultSchoolData.settings, ...data.settings },
   };
@@ -312,6 +315,27 @@ export function useSchoolData() {
     }));
   }, []);
 
+  const upsertEventSource = useCallback((input: EventSource) => {
+    setData((current) => {
+      const id = input.id || createId("event-source");
+      const nextSource = { ...input, id };
+      return {
+        ...current,
+        eventSources: [
+          ...current.eventSources.filter((source) => source.id !== id),
+          nextSource,
+        ].sort((a, b) => b.fetchedAt.localeCompare(a.fetchedAt)),
+      };
+    });
+  }, []);
+
+  const removeEventSource = useCallback((id: string) => {
+    setData((current) => ({
+      ...current,
+      eventSources: current.eventSources.filter((source) => source.id !== id),
+    }));
+  }, []);
+
   const upsertBoardMemo = useCallback((input: BoardMemo) => {
     setData((current) => {
       const id = input.id || createId("board");
@@ -346,6 +370,8 @@ export function useSchoolData() {
     removeAssignment,
     addEvent,
     removeEvent,
+    upsertEventSource,
+    removeEventSource,
     upsertBoardMemo,
     removeBoardMemo,
   };

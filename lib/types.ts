@@ -60,6 +60,19 @@ export type SchoolEvent = {
   memo: string;
 };
 
+export type EventSourceType = "monthly" | "yearly" | "manual";
+export type EventSourceStatus = "pending" | "imported" | "failed";
+
+export type EventSource = {
+  id: string;
+  title: string;
+  url: string;
+  sourceType: EventSourceType;
+  fetchedAt: string;
+  status: EventSourceStatus;
+  memo: string;
+};
+
 export type BoardNoteType = "quiz" | "prep" | "homework" | "item" | "notice";
 
 export type BoardNote = {
@@ -98,6 +111,7 @@ export type SchoolData = {
   assignments: Assignment[];
   studyTasks: StudyTask[];
   events: SchoolEvent[];
+  eventSources: EventSource[];
   boardMemos: BoardMemo[];
   settings: SchoolSettings;
 };

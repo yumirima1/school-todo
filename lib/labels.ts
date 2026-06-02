@@ -1,6 +1,8 @@
 import {
   AssignmentStatus,
   BoardNoteType,
+  EventSourceStatus,
+  EventSourceType,
   Priority,
   SchoolEventType,
   StudyTaskType,
@@ -39,4 +41,16 @@ export const boardNoteTypeLabels: Record<BoardNoteType, string> = {
   homework: "宿題",
   item: "持ち物",
   notice: "連絡",
+};
+
+export const eventSourceTypeLabels: Record<EventSourceType, string> = {
+  monthly: "月間行事予定",
+  yearly: "年間行事予定",
+  manual: "手動メモ",
+};
+
+export const eventSourceStatusLabels: Record<EventSourceStatus, string> = {
+  pending: "解析待ち",
+  imported: "取込済み",
+  failed: "失敗",
 };
