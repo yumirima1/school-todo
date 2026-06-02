@@ -21,7 +21,10 @@ import {
   formatJapaneseDate,
   getDayOfWeek,
 } from "@/lib/date";
-import { boardNoteTypeLabels } from "@/lib/labels";
+import {
+  boardNoteTypeLabels,
+  recurringTaskCategoryLabels,
+} from "@/lib/labels";
 import { buildTomorrowPacks } from "@/lib/prep";
 import { getActiveRecurringGroups } from "@/lib/recurring";
 import { useSchoolData } from "@/lib/school-data";
@@ -75,7 +78,12 @@ export default function TodayPage() {
     new Set(tomorrowPacks.flatMap((pack) => pack.items)),
   );
   const boardAttentionGroups = getBoardAttentionGroups(boardMemo);
-  const recurringGroups = getActiveRecurringGroups(data.subjects);
+  const tomorrowSubjectIds = new Set(
+    nextTimetable.map((lesson) => lesson.subjectId).filter(Boolean),
+  );
+  const recurringGroups = getActiveRecurringGroups(
+    data.subjects.filter((subject) => tomorrowSubjectIds.has(subject.id)),
+  );
   const classLabel = `${data.settings.schoolName} ${data.settings.grade}${data.settings.className}`;
 
   return (
@@ -203,9 +211,15 @@ export default function TodayPage() {
                       {group.tasks.map((task) => (
                         <li
                           key={task.id}
-                          className="break-words text-sm text-slate-300"
+                          className="flex items-start gap-2 break-words text-sm text-slate-300"
                         >
-                          {task.title}
+                          <span className="mt-0.5 shrink-0 rounded-md border border-cyan-300/20 bg-cyan-400/10 px-2 py-0.5 text-[11px] font-medium text-cyan-100">
+                            {recurringTaskCategoryLabels[task.category].replace(
+                              "固定",
+                              "",
+                            )}
+                          </span>
+                          <span>{task.title}</span>
                         </li>
                       ))}
                     </ul>
@@ -213,7 +227,7 @@ export default function TodayPage() {
                 ))}
               </div>
             ) : (
-              <EmptyState text="教科ページで固定提出物・小テスト・予習を登録できます。" />
+              <EmptyState text="明日の時間割に固定提出物・小テスト・予習がある教科はありません。" />
             )}
           </Card>
         </div>

@@ -185,7 +185,7 @@ export default function SubjectsPage() {
                           ))}
                         </div>
                       ) : (
-                        <EmptyState text="登録なし" />
+                        <EmptyState text="固定項目なし" />
                       )}
                     </section>
                   );
