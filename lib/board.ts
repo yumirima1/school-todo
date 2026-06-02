@@ -120,9 +120,11 @@ const subjectAliases: Record<string, string[]> = {
     "コミュⅠ",
     "コミュニケーション1",
     "コミュニケーションⅠ",
+    "コミュニケーション",
     "英コミ",
     "英コミ1",
     "英コミⅠ",
+    "英語コミュニケーション",
   ],
   "logic-expression-1": [
     "論表",
@@ -149,6 +151,16 @@ function normalizeText(value: string) {
     .replace(/Ⅳ/g, "4");
 }
 
+function normalizeOcrLine(value: string) {
+  return value
+    .replace(/[０-９]/g, (char) =>
+      String.fromCharCode(char.charCodeAt(0) - 0xfee0),
+    )
+    .replace(/[•●○◎□■◆◇・]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 function normalizeBoardNoteType(value: unknown): BoardNoteType {
   if (typeof value === "string" && validNoteTypes.includes(value as BoardNoteType)) {
     return value as BoardNoteType;
@@ -156,7 +168,7 @@ function normalizeBoardNoteType(value: unknown): BoardNoteType {
   return "notice";
 }
 
-function findSubjectByOcrName(subjectName: string, subjects: Subject[]) {
+export function findSubjectByOcrName(subjectName: string, subjects: Subject[]) {
   const normalizedSubjectName = normalizeText(subjectName);
   if (!normalizedSubjectName) {
     return undefined;
@@ -175,6 +187,130 @@ function findSubjectByOcrName(subjectName: string, subjects: Subject[]) {
         candidate.includes(normalizedSubjectName),
     );
   });
+}
+
+function classifyBoardNoteText(text: string): BoardNoteType {
+  if (/小テスト|単語テスト|漢字テスト|テスト|quiz/i.test(text)) {
+    return "quiz";
+  }
+  if (/予習|prep/i.test(text)) {
+    return "prep";
+  }
+  if (/宿題|課題|提出|homework/i.test(text)) {
+    return "homework";
+  }
+  if (/持ち物|持参|用意|bring|item/i.test(text)) {
+    return "item";
+  }
+  return "notice";
+}
+
+function stripNotePrefix(text: string) {
+  return text.replace(/^[-*、。:：)\]）\s]+/, "").trim();
+}
+
+function splitInlineNotes(text: string) {
+  return text
+    .split(/[、,／/;；]+/)
+    .map((value) => stripNotePrefix(value))
+    .filter(Boolean);
+}
+
+function getSubjectCandidates(subject: Subject) {
+  return [subject.name, subject.shortName, ...(subjectAliases[subject.id] ?? [])]
+    .filter(Boolean)
+    .sort((a, b) => normalizeText(b).length - normalizeText(a).length);
+}
+
+function extractSubjectAndNotes(text: string, subjects: Subject[]) {
+  const normalizedLine = normalizeText(text);
+
+  for (const subject of subjects) {
+    for (const candidate of getSubjectCandidates(subject)) {
+      const normalizedCandidate = normalizeText(candidate);
+      if (!normalizedCandidate || !normalizedLine.includes(normalizedCandidate)) {
+        continue;
+      }
+
+      const subjectName = candidate;
+      const rawParts = text.split(/\s+/);
+      const tokenIndex = rawParts.findIndex(
+        (part) => normalizeText(part) === normalizedCandidate,
+      );
+      const remainingText =
+        tokenIndex >= 0 ? rawParts.slice(tokenIndex + 1).join(" ") : "";
+
+      return {
+        subjectName,
+        notes: splitInlineNotes(remainingText),
+      };
+    }
+  }
+
+  const [subjectName = "", ...noteParts] = text.split(/\s+/);
+  return {
+    subjectName,
+    notes: splitInlineNotes(noteParts.join(" ")),
+  };
+}
+
+export function boardOcrTextToResult(text: string, subjects: Subject[]): BoardOcrResult {
+  const periods: BoardOcrResult["periods"] = [];
+  let currentPeriod: BoardOcrResult["periods"][number] | undefined;
+
+  const lines = text
+    .split(/\r?\n/)
+    .map(normalizeOcrLine)
+    .filter(Boolean);
+
+  for (const line of lines) {
+    const periodMatch = line.match(/^([1-7])\s*(?:限|時間目|校時)?\s*[:：.)、-]?\s*(.*)$/);
+
+    if (periodMatch) {
+      const period = Number(periodMatch[1]);
+      const rest = periodMatch[2].trim();
+      const { subjectName, notes } = extractSubjectAndNotes(rest, subjects);
+      currentPeriod = {
+        period,
+        subject: subjectName || rest || "未設定",
+        notes: notes.map((note) => ({
+          type: classifyBoardNoteText(note),
+          text: note,
+        })),
+      };
+      periods.push(currentPeriod);
+      continue;
+    }
+
+    if (!currentPeriod) {
+      continue;
+    }
+
+    const cleanedLine = stripNotePrefix(line);
+    if (!cleanedLine) {
+      continue;
+    }
+
+    const subject = findSubjectByOcrName(cleanedLine, subjects);
+    const hasNoteKeyword =
+      classifyBoardNoteText(cleanedLine) !== "notice" || /連絡|注意|あり/.test(cleanedLine);
+
+    if (subject && !hasNoteKeyword && currentPeriod.subject === "未設定") {
+      currentPeriod.subject = subject.shortName || subject.name;
+      continue;
+    }
+
+    currentPeriod.notes.push({
+      type: classifyBoardNoteText(cleanedLine),
+      text: cleanedLine,
+    });
+  }
+
+  return {
+    periods: periods.filter(
+      (period) => period.subject !== "未設定" || period.notes.length,
+    ),
+  };
 }
 
 export function boardOcrResultToMemo(

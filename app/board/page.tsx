@@ -24,6 +24,7 @@ import {
 import {
   createBoardNote,
   createEmptyBoardMemo,
+  boardOcrTextToResult,
   boardOcrResultToMemo,
   updateBoardNote,
   updateBoardPeriod,
@@ -52,6 +53,9 @@ export default function BoardPage() {
   const [ocrResult, setOcrResult] = useState<BoardOcrResult | null>(null);
   const [ocrStatus, setOcrStatus] = useState<OcrStatus>("idle");
   const [ocrError, setOcrError] = useState("");
+  const [ocrText, setOcrText] = useState("");
+  const [ocrProgress, setOcrProgress] = useState(0);
+  const [ocrSource, setOcrSource] = useState("");
 
   const sortedMemos = useMemo(() => {
     return [...data.boardMemos].sort((a, b) => b.date.localeCompare(a.date));
@@ -62,6 +66,9 @@ export default function BoardPage() {
     setOcrResult(null);
     setOcrStatus("idle");
     setOcrError("");
+    setOcrText("");
+    setOcrProgress(0);
+    setOcrSource("");
   }
 
   function handleImageChange(file: File | null) {
@@ -70,6 +77,9 @@ export default function BoardPage() {
     setOcrResult(null);
     setOcrStatus("idle");
     setOcrError("");
+    setOcrText("");
+    setOcrProgress(0);
+    setOcrSource("");
 
     if (!file || ["image/heic", "image/heif"].includes(file.type)) {
       return;
@@ -82,6 +92,60 @@ export default function BoardPage() {
     reader.readAsDataURL(file);
   }
 
+  function applyOcrResult(
+    result: BoardOcrResult,
+    source: string,
+    extractedText = "",
+  ) {
+    setOcrResult(result);
+    setOcrSource(source);
+    if (extractedText) {
+      setOcrText(extractedText);
+    }
+    setMemo((current) =>
+      boardOcrResultToMemo(result, current, data.subjects),
+    );
+    setOcrStatus("success");
+    setOcrProgress(100);
+  }
+
+  async function runFreeOcr() {
+    if (!boardImageFile) {
+      return;
+    }
+
+    setOcrSource("Tesseract.js 無料OCR");
+    setOcrProgress(0);
+
+    const { createWorker } = await import("tesseract.js");
+    const worker = await createWorker("jpn+eng", undefined, {
+      logger: (message) => {
+        if (message.status === "recognizing text") {
+          setOcrProgress(Math.round(message.progress * 100));
+        }
+      },
+    });
+
+    try {
+      const {
+        data: { text },
+      } = await worker.recognize(boardImageFile);
+      const extractedText = text.trim();
+
+      if (!extractedText) {
+        throw new Error("無料OCRで文字を抽出できませんでした。");
+      }
+
+      applyOcrResult(
+        boardOcrTextToResult(extractedText, data.subjects),
+        "Tesseract.js 無料OCR",
+        extractedText,
+      );
+    } finally {
+      await worker.terminate();
+    }
+  }
+
   async function analyzeBoardImage() {
     if (!boardImageFile) {
       return;
@@ -89,6 +153,9 @@ export default function BoardPage() {
 
     setOcrStatus("loading");
     setOcrError("");
+    setOcrText("");
+    setOcrProgress(0);
+    setOcrSource("OpenAI Vision確認中");
 
     const formData = new FormData();
     formData.append("image", boardImageFile);
@@ -107,24 +174,40 @@ export default function BoardPage() {
         throw new Error(payload.error ?? "黒板解析に失敗しました。");
       }
 
-      setOcrResult(payload.result);
-      setMemo((current) =>
-        boardOcrResultToMemo(payload.result as BoardOcrResult, current, data.subjects),
-      );
-      setOcrStatus("success");
-    } catch (error) {
-      setOcrStatus("error");
-      setOcrError(
-        error instanceof Error
-          ? error.message
-          : "黒板解析に失敗しました。手入力へ切り替えてください。",
-      );
+      applyOcrResult(payload.result, "OpenAI Vision");
+    } catch {
+      try {
+        await runFreeOcr();
+      } catch (error) {
+        setOcrStatus("error");
+        setOcrSource("");
+        setOcrError(
+          error instanceof Error
+            ? error.message
+            : "無料OCRに失敗しました。手入力へ切り替えてください。",
+        );
+      }
     }
+  }
+
+  function reflectOcrTextToMemo() {
+    if (!ocrText.trim()) {
+      setOcrStatus("error");
+      setOcrError("反映するOCRテキストがありません。");
+      return;
+    }
+
+    applyOcrResult(
+      boardOcrTextToResult(ocrText, data.subjects),
+      "編集済みOCRテキスト",
+      ocrText,
+    );
   }
 
   function switchToManualInput() {
     setOcrStatus("idle");
     setOcrError("");
+    setOcrSource("");
     document.getElementById("manual-board-periods")?.scrollIntoView({
       behavior: "smooth",
       block: "start",
@@ -262,7 +345,7 @@ export default function BoardPage() {
                     黒板写真から自動入力
                   </p>
                   <p className="mt-1 text-xs leading-5 text-slate-400">
-                    jpg / jpeg / png / heic を選んで解析します。AI解析未設定の場合も、下の手入力はそのまま使えます。
+                    OpenAI Visionが設定済みなら構造化解析を使い、未設定時はTesseract.jsの無料OCRへ自動で切り替えます。
                   </p>
                 </div>
               </div>
@@ -295,7 +378,7 @@ export default function BoardPage() {
                     />
                   ) : (
                     <div className="grid min-h-32 place-items-center rounded-md border border-white/10 bg-white/[0.03] px-3 text-center text-xs leading-5 text-slate-400">
-                      HEIC画像は端末やブラウザによってプレビューできない場合があります。解析はそのまま実行できます。
+                      HEIC画像は端末やブラウザによってプレビューや無料OCRが失敗する場合があります。失敗時はjpg / pngで再撮影してください。
                     </div>
                   )}
                   <button
@@ -311,6 +394,20 @@ export default function BoardPage() {
                     )}
                     {ocrStatus === "loading" ? "解析中" : "黒板を解析"}
                   </button>
+                  {ocrStatus === "loading" ? (
+                    <div className="rounded-md border border-white/10 bg-white/[0.03] p-3">
+                      <div className="flex items-center justify-between gap-3 text-xs text-slate-300">
+                        <span>{ocrSource || "OCR解析中"}</span>
+                        <span>{ocrProgress ? `${ocrProgress}%` : "準備中"}</span>
+                      </div>
+                      <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-white/10">
+                        <div
+                          className="h-full rounded-full bg-cyan-300 transition-all"
+                          style={{ width: `${Math.max(8, ocrProgress)}%` }}
+                        />
+                      </div>
+                    </div>
+                  ) : null}
                 </div>
               ) : null}
 
@@ -333,7 +430,7 @@ export default function BoardPage() {
               {ocrResult ? (
                 <div className="rounded-md border border-cyan-300/20 bg-cyan-400/10 p-3">
                   <p className="text-xs font-semibold text-cyan-100">
-                    AI解析結果を入力欄に反映しました。保存前に修正できます。
+                    {ocrSource}の結果を入力欄に反映しました。保存前に修正できます。
                   </p>
                   <div className="mt-3 grid gap-2">
                     {ocrResult.periods.map((period) => (
@@ -362,6 +459,28 @@ export default function BoardPage() {
                       </div>
                     ))}
                   </div>
+                </div>
+              ) : null}
+
+              {ocrText ? (
+                <div className="grid gap-2 rounded-md border border-white/10 bg-[#0b1118] p-3">
+                  <label className="grid gap-1 text-xs font-medium text-slate-300">
+                    抽出した文字
+                    <textarea
+                      className={`${inputClass} min-h-32 resize-y leading-6`}
+                      value={ocrText}
+                      onChange={(event) => setOcrText(event.target.value)}
+                      placeholder="OCRで読み取った文字がここに入ります。"
+                    />
+                  </label>
+                  <button
+                    className={secondaryButtonClass}
+                    type="button"
+                    onClick={reflectOcrTextToMemo}
+                  >
+                    <WandSparkles size={16} aria-hidden="true" />
+                    テキストをメモへ反映
+                  </button>
                 </div>
               ) : null}
             </div>
