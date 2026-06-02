@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Assignment,
+  BoardMemo,
   SchoolData,
   SchoolEvent,
   SchoolSettings,
@@ -49,7 +50,99 @@ const defaultSubjects: Subject[] = [
     color: "#fb7185",
     fixedItems: "体操服、タオル",
   },
+  {
+    id: "communication-1",
+    name: "コミュⅠ",
+    color: "#14b8a6",
+    fixedItems: "教科書、ノート、単語帳",
+  },
+  {
+    id: "public",
+    name: "公共",
+    color: "#f97316",
+    fixedItems: "教科書、ノート",
+  },
+  {
+    id: "logic-expression-1",
+    name: "論理・表現Ⅰ",
+    color: "#84cc16",
+    fixedItems: "教科書、ノート、ワーク",
+  },
+  {
+    id: "math-1",
+    name: "数学Ⅰ",
+    color: "#0ea5e9",
+    fixedItems: "教科書、ノート、問題集",
+  },
+  {
+    id: "language-culture",
+    name: "言語文化",
+    color: "#f43f5e",
+    fixedItems: "教科書、ノート、古典単語帳",
+  },
+  {
+    id: "basic-physics",
+    name: "物理基礎",
+    color: "#8b5cf6",
+    fixedItems: "教科書、ノート、問題集",
+  },
 ];
+
+const sampleBoardMemo: BoardMemo = {
+  id: "board-2026-06-03-sample",
+  date: "2026-06-03",
+  className: "1年4組",
+  periods: [
+    {
+      period: 1,
+      subjectId: "communication-1",
+      subjectName: "コミュⅠ",
+      notes: [
+        { type: "quiz", text: "小テスト", done: false },
+        { type: "prep", text: "予習", done: false },
+      ],
+    },
+    {
+      period: 2,
+      subjectId: "public",
+      subjectName: "公共",
+      notes: [],
+    },
+    {
+      period: 3,
+      subjectId: "logic-expression-1",
+      subjectName: "論理・表現Ⅰ",
+      notes: [{ type: "prep", text: "予習あり", done: false }],
+    },
+    {
+      period: 4,
+      subjectId: "math-1",
+      subjectName: "数学Ⅰ",
+      notes: [{ type: "quiz", text: "小テスト 5/6で合格", done: false }],
+    },
+    {
+      period: 5,
+      subjectId: "pe",
+      subjectName: "体育",
+      notes: [],
+    },
+    {
+      period: 6,
+      subjectId: "language-culture",
+      subjectName: "言語文化",
+      notes: [{ type: "quiz", text: "小テスト", done: false }],
+    },
+    {
+      period: 7,
+      subjectId: "basic-physics",
+      subjectName: "物理基礎",
+      notes: [
+        { type: "quiz", text: "小テスト", done: false },
+        { type: "homework", text: "宿題", done: false },
+      ],
+    },
+  ],
+};
 
 export const defaultSchoolData: SchoolData = {
   subjects: defaultSubjects,
@@ -57,6 +150,7 @@ export const defaultSchoolData: SchoolData = {
   assignments: [],
   studyTasks: [],
   events: [],
+  boardMemos: [sampleBoardMemo],
   settings: {
     schoolName: "筑前高校",
     grade: "1年",
@@ -91,6 +185,7 @@ function normalizeData(data: Partial<SchoolData>): SchoolData {
     assignments: data.assignments ?? [],
     studyTasks: data.studyTasks ?? [],
     events: data.events ?? [],
+    boardMemos: data.boardMemos ?? defaultSchoolData.boardMemos,
     settings: { ...defaultSchoolData.settings, ...data.settings },
   };
 }
@@ -217,6 +312,27 @@ export function useSchoolData() {
     }));
   }, []);
 
+  const upsertBoardMemo = useCallback((input: BoardMemo) => {
+    setData((current) => {
+      const id = input.id || createId("board");
+      const nextMemo = { ...input, id };
+      return {
+        ...current,
+        boardMemos: [
+          ...current.boardMemos.filter((memo) => memo.id !== id),
+          nextMemo,
+        ].sort((a, b) => b.date.localeCompare(a.date)),
+      };
+    });
+  }, []);
+
+  const removeBoardMemo = useCallback((id: string) => {
+    setData((current) => ({
+      ...current,
+      boardMemos: current.boardMemos.filter((memo) => memo.id !== id),
+    }));
+  }, []);
+
   return {
     data,
     ready: true,
@@ -230,5 +346,7 @@ export function useSchoolData() {
     removeAssignment,
     addEvent,
     removeEvent,
+    upsertBoardMemo,
+    removeBoardMemo,
   };
 }

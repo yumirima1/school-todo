@@ -60,6 +60,28 @@ export type SchoolEvent = {
   memo: string;
 };
 
+export type BoardNoteType = "quiz" | "prep" | "homework" | "item" | "notice";
+
+export type BoardNote = {
+  type: BoardNoteType;
+  text: string;
+  done: boolean;
+};
+
+export type BoardPeriod = {
+  period: number;
+  subjectId: string;
+  subjectName: string;
+  notes: BoardNote[];
+};
+
+export type BoardMemo = {
+  id: string;
+  date: string;
+  className: string;
+  periods: BoardPeriod[];
+};
+
 export type SchoolSettings = {
   schoolName: string;
   grade: string;
@@ -76,5 +98,6 @@ export type SchoolData = {
   assignments: Assignment[];
   studyTasks: StudyTask[];
   events: SchoolEvent[];
+  boardMemos: BoardMemo[];
   settings: SchoolSettings;
 };

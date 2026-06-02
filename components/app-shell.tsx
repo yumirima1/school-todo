@@ -9,17 +9,19 @@ import {
   Clock3,
   GraduationCap,
   Home,
+  NotebookPen,
   Settings,
   Sparkles,
   Trophy,
 } from "lucide-react";
 
 const navItems = [
-  { href: "/", label: "今日", icon: Home },
+  { href: "/", label: "ホーム", icon: Home },
   { href: "/assignments", label: "提出物", icon: ClipboardList },
   { href: "/timetable", label: "時間割", icon: Clock3 },
-  { href: "/study", label: "学習", icon: BookOpenCheck },
+  { href: "/board", label: "黒板メモ", icon: NotebookPen },
   { href: "/events", label: "行事", icon: Trophy },
+  { href: "/study", label: "予習", icon: BookOpenCheck },
   { href: "/calendar", label: "予定", icon: CalendarDays },
   { href: "/subjects", label: "教科", icon: GraduationCap },
   { href: "/settings", label: "設定", icon: Settings },
@@ -47,7 +49,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               </span>
             </Link>
             <span className="rounded-md border border-cyan-300/30 px-2.5 py-1 text-xs font-medium text-cyan-200">
-              Phase 1
+              Phase 3
             </span>
           </div>
         </header>

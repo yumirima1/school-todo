@@ -1,5 +1,6 @@
 import {
   AssignmentStatus,
+  BoardNoteType,
   Priority,
   SchoolEventType,
   StudyTaskType,
@@ -30,4 +31,12 @@ export const studyTaskTypeLabels: Record<StudyTaskType, string> = {
   prep: "予習",
   review: "復習",
   quiz: "小テスト",
+};
+
+export const boardNoteTypeLabels: Record<BoardNoteType, string> = {
+  quiz: "小テスト",
+  prep: "予習",
+  homework: "宿題",
+  item: "持ち物",
+  notice: "連絡",
 };

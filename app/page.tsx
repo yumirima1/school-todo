@@ -5,17 +5,23 @@ import {
   ArrowRight,
   CalendarClock,
   ClipboardList,
+  NotebookPen,
   PackageCheck,
   School,
 } from "lucide-react";
 import { AssignmentCard, EventCountdown, TimetableSlot } from "@/components/school-cards";
 import { Card, EmptyState, PageHeader, secondaryButtonClass } from "@/components/ui";
 import {
+  boardMemoToTimetable,
+  getBoardAttentionGroups,
+} from "@/lib/board";
+import {
   dayNames,
   daysBetween,
   formatJapaneseDate,
   getDayOfWeek,
 } from "@/lib/date";
+import { boardNoteTypeLabels } from "@/lib/labels";
 import { buildTomorrowPacks } from "@/lib/prep";
 import { useSchoolData } from "@/lib/school-data";
 
@@ -26,13 +32,26 @@ export default function TodayPage() {
   tomorrow.setDate(today.getDate() + 1);
   const tomorrowDow = getDayOfWeek(tomorrow);
   const tomorrowLabel = tomorrowDow ? dayNames[tomorrowDow] : "日曜";
+  const tomorrowValue = [
+    tomorrow.getFullYear(),
+    String(tomorrow.getMonth() + 1).padStart(2, "0"),
+    String(tomorrow.getDate()).padStart(2, "0"),
+  ].join("-");
+  const className = `${data.settings.grade}${data.settings.className}`;
+  const boardMemo =
+    data.boardMemos.find(
+      (memo) => memo.date === tomorrowValue && memo.className === className,
+    ) ?? data.boardMemos.find((memo) => memo.date === tomorrowValue);
 
-  const nextTimetable =
+  const weekdayTimetable =
     tomorrowDow === 0
       ? []
       : data.timetable
           .filter((item) => item.dayOfWeek === tomorrowDow)
           .sort((a, b) => a.period - b.period);
+  const nextTimetable = boardMemo
+    ? boardMemoToTimetable(boardMemo, subjectById)
+    : weekdayTimetable;
 
   const activeAssignments = data.assignments
     .filter((assignment) => !["done", "submitted"].includes(assignment.status))
@@ -54,6 +73,7 @@ export default function TodayPage() {
   const allTomorrowItems = Array.from(
     new Set(tomorrowPacks.flatMap((pack) => pack.items)),
   );
+  const boardAttentionGroups = getBoardAttentionGroups(boardMemo);
   const classLabel = `${data.settings.schoolName} ${data.settings.grade}${data.settings.className}`;
 
   return (
@@ -80,12 +100,24 @@ export default function TodayPage() {
           <Card
             title="明日の時間割"
             action={
-              <Link className={secondaryButtonClass} href="/timetable">
-                編集
-                <ArrowRight size={15} aria-hidden="true" />
+              <Link
+                className={secondaryButtonClass}
+                href={boardMemo ? "/board" : "/timetable"}
+              >
+                {boardMemo ? "黒板メモ" : "編集"}
+                {boardMemo ? (
+                  <NotebookPen size={15} aria-hidden="true" />
+                ) : (
+                  <ArrowRight size={15} aria-hidden="true" />
+                )}
               </Link>
             }
           >
+            {boardMemo && (
+              <p className="mb-3 rounded-md border border-cyan-300/25 bg-cyan-400/10 px-3 py-2 text-xs font-medium text-cyan-100">
+                黒板メモを優先して表示しています。
+              </p>
+            )}
             {nextTimetable.length ? (
               <div className="grid gap-2 sm:grid-cols-2">
                 {nextTimetable.map((item) => (
@@ -150,6 +182,53 @@ export default function TodayPage() {
         </div>
 
         <div className="grid gap-4 content-start">
+          <Card
+            title="明日の注意"
+            action={
+              <Link className={secondaryButtonClass} href="/board">
+                入力
+                <NotebookPen size={15} aria-hidden="true" />
+              </Link>
+            }
+          >
+            {boardAttentionGroups.length ? (
+              <div className="grid gap-2">
+                {boardAttentionGroups.map((group) => (
+                  <article
+                    key={group.key}
+                    className="rounded-lg border border-white/10 bg-[#0d141c] p-3"
+                  >
+                    <div className="mb-2 flex items-center justify-between gap-3">
+                      <h2 className="text-sm font-semibold text-white">
+                        {group.subjectName}
+                      </h2>
+                      <span className="rounded-md bg-white/10 px-2 py-1 text-xs text-slate-300">
+                        {group.period}限
+                      </span>
+                    </div>
+                    <ul className="grid gap-2">
+                      {group.notes.map((note, index) => (
+                        <li
+                          key={`${group.key}-${index}`}
+                          className="flex items-start gap-2 text-sm text-slate-200"
+                        >
+                          <span className="mt-0.5 shrink-0 rounded-md border border-cyan-300/20 bg-cyan-400/10 px-2 py-0.5 text-[11px] font-medium text-cyan-100">
+                            {boardNoteTypeLabels[note.type]}
+                          </span>
+                          <span className={note.done ? "line-through opacity-60" : ""}>
+                            {note.text}
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  </article>
+                ))}
+              </div>
+            ) : (
+              <EmptyState text="明日の黒板メモを登録すると、小テスト・予習・宿題・持ち物・連絡がここに出ます。" />
+            )}
+          </Card>
+
           <Card
             title="明日の持ち物"
             action={
