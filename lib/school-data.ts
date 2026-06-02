@@ -5,6 +5,7 @@ import {
   Assignment,
   SchoolData,
   SchoolEvent,
+  SchoolSettings,
   Subject,
   TimetableItem,
 } from "@/lib/types";
@@ -12,12 +13,42 @@ import {
 const storageKey = "school-dock:data:v1";
 
 const defaultSubjects: Subject[] = [
-  { id: "japanese", name: "国語", color: "#ef4444" },
-  { id: "math", name: "数学", color: "#38bdf8" },
-  { id: "english", name: "英語", color: "#22c55e" },
-  { id: "science", name: "理科", color: "#a78bfa" },
-  { id: "social", name: "社会", color: "#f59e0b" },
-  { id: "pe", name: "体育", color: "#fb7185" },
+  {
+    id: "japanese",
+    name: "国語",
+    color: "#ef4444",
+    fixedItems: "教科書、ノート、漢字ノート",
+  },
+  {
+    id: "math",
+    name: "数学",
+    color: "#38bdf8",
+    fixedItems: "教科書、ノート、ワーク、定規",
+  },
+  {
+    id: "english",
+    name: "英語",
+    color: "#22c55e",
+    fixedItems: "教科書、ノート、単語帳",
+  },
+  {
+    id: "science",
+    name: "理科",
+    color: "#a78bfa",
+    fixedItems: "教科書、ノート、資料集",
+  },
+  {
+    id: "social",
+    name: "社会",
+    color: "#f59e0b",
+    fixedItems: "教科書、ノート、資料集",
+  },
+  {
+    id: "pe",
+    name: "体育",
+    color: "#fb7185",
+    fixedItems: "体操服、タオル",
+  },
 ];
 
 export const defaultSchoolData: SchoolData = {
@@ -27,6 +58,9 @@ export const defaultSchoolData: SchoolData = {
   studyTasks: [],
   events: [],
   settings: {
+    schoolName: "筑前高校",
+    grade: "1年",
+    className: "4組",
     periodCount: 6,
     hasSaturday: false,
     themeColor: "#38bdf8",
@@ -39,8 +73,20 @@ function createId(prefix: string) {
 }
 
 function normalizeData(data: Partial<SchoolData>): SchoolData {
+  const defaultSubjectById = new Map(
+    defaultSchoolData.subjects.map((subject) => [subject.id, subject]),
+  );
+  const subjects = data.subjects?.length
+    ? data.subjects.map((subject) => ({
+        ...defaultSubjectById.get(subject.id),
+        ...subject,
+        fixedItems:
+          subject.fixedItems ?? defaultSubjectById.get(subject.id)?.fixedItems ?? "",
+      }))
+    : defaultSchoolData.subjects;
+
   return {
-    subjects: data.subjects?.length ? data.subjects : defaultSchoolData.subjects,
+    subjects,
     timetable: data.timetable ?? [],
     assignments: data.assignments ?? [],
     studyTasks: data.studyTasks ?? [],
@@ -109,6 +155,25 @@ export function useSchoolData() {
     }));
   }, []);
 
+  const updateSubject = useCallback(
+    (id: string, patch: Partial<Omit<Subject, "id">>) => {
+      setData((current) => ({
+        ...current,
+        subjects: current.subjects.map((subject) =>
+          subject.id === id ? { ...subject, ...patch } : subject,
+        ),
+      }));
+    },
+    [],
+  );
+
+  const updateSettings = useCallback((patch: Partial<SchoolSettings>) => {
+    setData((current) => ({
+      ...current,
+      settings: { ...current.settings, ...patch },
+    }));
+  }, []);
+
   const addAssignment = useCallback((input: Omit<Assignment, "id">) => {
     setData((current) => ({
       ...current,
@@ -156,6 +221,8 @@ export function useSchoolData() {
     data,
     ready: true,
     subjectById,
+    updateSubject,
+    updateSettings,
     upsertTimetableItem,
     removeTimetableItem,
     addAssignment,

@@ -2,6 +2,7 @@ export type Subject = {
   id: string;
   name: string;
   color: string;
+  fixedItems: string;
 };
 
 export type DayOfWeek = 1 | 2 | 3 | 4 | 5 | 6;
@@ -60,6 +61,9 @@ export type SchoolEvent = {
 };
 
 export type SchoolSettings = {
+  schoolName: string;
+  grade: string;
+  className: string;
   periodCount: number;
   hasSaturday: boolean;
   themeColor: string;
