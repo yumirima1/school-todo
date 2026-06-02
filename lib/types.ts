@@ -128,6 +128,21 @@ export type BoardMemo = {
   periods: BoardPeriod[];
 };
 
+export type BoardOcrNote = {
+  type: BoardNoteType;
+  text: string;
+};
+
+export type BoardOcrPeriod = {
+  period: number;
+  subject: string;
+  notes: BoardOcrNote[];
+};
+
+export type BoardOcrResult = {
+  periods: BoardOcrPeriod[];
+};
+
 export type SchoolSettings = {
   schoolName: string;
   grade: string;

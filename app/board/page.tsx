@@ -1,7 +1,16 @@
 "use client";
 
 import { FormEvent, useMemo, useState } from "react";
-import { Camera, Plus, Save, Trash2 } from "lucide-react";
+import {
+  AlertTriangle,
+  Camera,
+  Loader2,
+  Plus,
+  Save,
+  Trash2,
+  Upload,
+  WandSparkles,
+} from "lucide-react";
 import {
   Card,
   EmptyState,
@@ -15,13 +24,16 @@ import {
 import {
   createBoardNote,
   createEmptyBoardMemo,
+  boardOcrResultToMemo,
   updateBoardNote,
   updateBoardPeriod,
 } from "@/lib/board";
 import { toDateInputValue } from "@/lib/date";
 import { boardNoteTypeLabels } from "@/lib/labels";
 import { useSchoolData } from "@/lib/school-data";
-import { BoardMemo, BoardNoteType } from "@/lib/types";
+import { BoardMemo, BoardNoteType, BoardOcrResult } from "@/lib/types";
+
+type OcrStatus = "idle" | "loading" | "success" | "error";
 
 function getTomorrowValue() {
   const tomorrow = new Date();
@@ -35,6 +47,11 @@ export default function BoardPage() {
   const [memo, setMemo] = useState<BoardMemo>(() =>
     createEmptyBoardMemo(getTomorrowValue(), defaultClassName, data.subjects),
   );
+  const [boardImageFile, setBoardImageFile] = useState<File | null>(null);
+  const [boardImagePreview, setBoardImagePreview] = useState("");
+  const [ocrResult, setOcrResult] = useState<BoardOcrResult | null>(null);
+  const [ocrStatus, setOcrStatus] = useState<OcrStatus>("idle");
+  const [ocrError, setOcrError] = useState("");
 
   const sortedMemos = useMemo(() => {
     return [...data.boardMemos].sort((a, b) => b.date.localeCompare(a.date));
@@ -42,6 +59,76 @@ export default function BoardPage() {
 
   function resetMemo() {
     setMemo(createEmptyBoardMemo(getTomorrowValue(), defaultClassName, data.subjects));
+    setOcrResult(null);
+    setOcrStatus("idle");
+    setOcrError("");
+  }
+
+  function handleImageChange(file: File | null) {
+    setBoardImageFile(file);
+    setBoardImagePreview("");
+    setOcrResult(null);
+    setOcrStatus("idle");
+    setOcrError("");
+
+    if (!file || ["image/heic", "image/heif"].includes(file.type)) {
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      setBoardImagePreview(typeof reader.result === "string" ? reader.result : "");
+    };
+    reader.readAsDataURL(file);
+  }
+
+  async function analyzeBoardImage() {
+    if (!boardImageFile) {
+      return;
+    }
+
+    setOcrStatus("loading");
+    setOcrError("");
+
+    const formData = new FormData();
+    formData.append("image", boardImageFile);
+
+    try {
+      const response = await fetch("/api/board-ocr", {
+        method: "POST",
+        body: formData,
+      });
+      const payload = (await response.json()) as {
+        result?: BoardOcrResult;
+        error?: string;
+      };
+
+      if (!response.ok || !payload.result) {
+        throw new Error(payload.error ?? "黒板解析に失敗しました。");
+      }
+
+      setOcrResult(payload.result);
+      setMemo((current) =>
+        boardOcrResultToMemo(payload.result as BoardOcrResult, current, data.subjects),
+      );
+      setOcrStatus("success");
+    } catch (error) {
+      setOcrStatus("error");
+      setOcrError(
+        error instanceof Error
+          ? error.message
+          : "黒板解析に失敗しました。手入力へ切り替えてください。",
+      );
+    }
+  }
+
+  function switchToManualInput() {
+    setOcrStatus("idle");
+    setOcrError("");
+    document.getElementById("manual-board-periods")?.scrollIntoView({
+      behavior: "smooth",
+      block: "start",
+    });
   }
 
   function handleSubjectChange(periodNumber: number, subjectId: string) {
@@ -165,30 +252,122 @@ export default function BoardPage() {
           </Card>
 
           <Card title="黒板写真">
-            <div className="rounded-lg border border-dashed border-white/15 bg-[#0d141c] p-4">
-              <div className="flex items-center gap-3">
+            <div className="grid gap-3 rounded-lg border border-dashed border-white/15 bg-[#0d141c] p-4">
+              <div className="flex items-start gap-3">
                 <span className="grid size-10 place-items-center rounded-md bg-white/10 text-slate-300">
                   <Camera size={18} aria-hidden="true" />
                 </span>
                 <div>
                   <p className="text-sm font-semibold text-white">
-                    画像読み取りは今後対応予定
+                    黒板写真から自動入力
                   </p>
                   <p className="mt-1 text-xs leading-5 text-slate-400">
-                    Phase 3では手入力で保存します。将来、黒板写真からOCR結果をこのメモ構造へ流し込みます。
+                    jpg / jpeg / png / heic を選んで解析します。AI解析未設定の場合も、下の手入力はそのまま使えます。
                   </p>
                 </div>
               </div>
-              <input
-                className="mt-3 w-full rounded-md border border-white/10 bg-[#0b1118] px-3 py-2 text-sm text-slate-400"
-                type="file"
-                accept="image/*"
-                disabled
-              />
+
+              <label className="grid gap-2 text-xs font-medium text-slate-300">
+                黒板写真
+                <span className="flex min-h-12 cursor-pointer items-center justify-center gap-2 rounded-md border border-white/10 bg-[#0b1118] px-3 py-3 text-sm text-slate-200 transition hover:border-cyan-300/50">
+                  <Upload size={16} aria-hidden="true" />
+                  {boardImageFile ? boardImageFile.name : "画像を選択"}
+                </span>
+                <input
+                  className="sr-only"
+                  type="file"
+                  accept=".jpg,.jpeg,.png,.heic,image/jpeg,image/png,image/heic,image/heif"
+                  onChange={(event) =>
+                    handleImageChange(event.target.files?.[0] ?? null)
+                  }
+                />
+              </label>
+
+              {boardImageFile ? (
+                <div className="grid gap-3 rounded-md border border-white/10 bg-[#0b1118] p-2">
+                  {boardImagePreview &&
+                  !["image/heic", "image/heif"].includes(boardImageFile.type) ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      className="max-h-72 w-full rounded-md object-contain"
+                      src={boardImagePreview}
+                      alt="選択した黒板写真のプレビュー"
+                    />
+                  ) : (
+                    <div className="grid min-h-32 place-items-center rounded-md border border-white/10 bg-white/[0.03] px-3 text-center text-xs leading-5 text-slate-400">
+                      HEIC画像は端末やブラウザによってプレビューできない場合があります。解析はそのまま実行できます。
+                    </div>
+                  )}
+                  <button
+                    className={primaryButtonClass}
+                    type="button"
+                    onClick={analyzeBoardImage}
+                    disabled={ocrStatus === "loading"}
+                  >
+                    {ocrStatus === "loading" ? (
+                      <Loader2 className="animate-spin" size={16} aria-hidden="true" />
+                    ) : (
+                      <WandSparkles size={16} aria-hidden="true" />
+                    )}
+                    {ocrStatus === "loading" ? "解析中" : "黒板を解析"}
+                  </button>
+                </div>
+              ) : null}
+
+              {ocrStatus === "error" ? (
+                <div className="rounded-md border border-amber-300/30 bg-amber-400/10 p-3">
+                  <div className="flex items-start gap-2 text-sm font-semibold text-amber-100">
+                    <AlertTriangle size={16} aria-hidden="true" />
+                    {ocrError || "解析に失敗しました。"}
+                  </div>
+                  <button
+                    className={`${secondaryButtonClass} mt-3 w-full`}
+                    type="button"
+                    onClick={switchToManualInput}
+                  >
+                    手入力へ切り替え
+                  </button>
+                </div>
+              ) : null}
+
+              {ocrResult ? (
+                <div className="rounded-md border border-cyan-300/20 bg-cyan-400/10 p-3">
+                  <p className="text-xs font-semibold text-cyan-100">
+                    AI解析結果を入力欄に反映しました。保存前に修正できます。
+                  </p>
+                  <div className="mt-3 grid gap-2">
+                    {ocrResult.periods.map((period) => (
+                      <div
+                        key={`${period.period}-${period.subject}`}
+                        className="rounded-md border border-white/10 bg-[#0b1118] p-2"
+                      >
+                        <p className="text-sm font-semibold text-white">
+                          {period.period}限 {period.subject}
+                        </p>
+                        {period.notes.length ? (
+                          <ul className="mt-2 grid gap-1 text-xs text-slate-300">
+                            {period.notes.map((note, noteIndex) => (
+                              <li
+                                key={`${period.period}-${note.type}-${noteIndex}`}
+                                className="flex gap-2"
+                              >
+                                <span className="shrink-0 rounded border border-white/10 bg-white/5 px-1.5 py-0.5 text-[11px] text-cyan-100">
+                                  {boardNoteTypeLabels[note.type]}
+                                </span>
+                                <span>{note.text}</span>
+                              </li>
+                            ))}
+                          </ul>
+                        ) : null}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
             </div>
           </Card>
 
-          <div className="grid gap-3">
+          <div id="manual-board-periods" className="grid scroll-mt-4 gap-3">
             {memo.periods.map((period) => (
               <Card key={period.period} title={`${period.period}限`}>
                 <div className="grid gap-3">

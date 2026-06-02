@@ -2,6 +2,7 @@ import {
   BoardMemo,
   BoardNote,
   BoardNoteType,
+  BoardOcrResult,
   BoardPeriod,
   Subject,
   TimetableItem,
@@ -101,5 +102,122 @@ export function createBoardNote(type: BoardNoteType = "quiz"): BoardNote {
     type,
     text: "",
     done: false,
+  };
+}
+
+const validNoteTypes: BoardNoteType[] = [
+  "quiz",
+  "prep",
+  "homework",
+  "item",
+  "notice",
+];
+
+const subjectAliases: Record<string, string[]> = {
+  "communication-1": [
+    "コミュ",
+    "コミュ1",
+    "コミュⅠ",
+    "コミュニケーション1",
+    "コミュニケーションⅠ",
+    "英コミ",
+    "英コミ1",
+    "英コミⅠ",
+  ],
+  "logic-expression-1": [
+    "論表",
+    "論表1",
+    "論表Ⅰ",
+    "論理表現",
+    "論理表現1",
+    "論理表現Ⅰ",
+  ],
+  "math-1": ["数1", "数Ⅰ", "数学1", "数学Ⅰ"],
+  japanese: ["現国", "現代文", "現代の国語"],
+  "language-culture": ["言文", "古典", "言語文化"],
+  "basic-physics": ["物基", "物理", "物理基礎"],
+};
+
+function normalizeText(value: string) {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/[　\s・\-ー]/g, "")
+    .replace(/Ⅰ/g, "1")
+    .replace(/Ⅱ/g, "2")
+    .replace(/Ⅲ/g, "3")
+    .replace(/Ⅳ/g, "4");
+}
+
+function normalizeBoardNoteType(value: unknown): BoardNoteType {
+  if (typeof value === "string" && validNoteTypes.includes(value as BoardNoteType)) {
+    return value as BoardNoteType;
+  }
+  return "notice";
+}
+
+function findSubjectByOcrName(subjectName: string, subjects: Subject[]) {
+  const normalizedSubjectName = normalizeText(subjectName);
+  if (!normalizedSubjectName) {
+    return undefined;
+  }
+
+  return subjects.find((subject) => {
+    const candidates = [
+      subject.name,
+      subject.shortName,
+      ...(subjectAliases[subject.id] ?? []),
+    ].map(normalizeText);
+    return candidates.some(
+      (candidate) =>
+        candidate === normalizedSubjectName ||
+        normalizedSubjectName.includes(candidate) ||
+        candidate.includes(normalizedSubjectName),
+    );
+  });
+}
+
+export function boardOcrResultToMemo(
+  result: BoardOcrResult,
+  baseMemo: BoardMemo,
+  subjects: Subject[],
+): BoardMemo {
+  const fallbackSubject = subjects[0];
+  const periodsByNumber = new Map(
+    result.periods
+      .filter((period) => Number.isInteger(period.period))
+      .map((period) => [period.period, period]),
+  );
+
+  return {
+    ...baseMemo,
+    periods: baseMemo.periods.map((period) => {
+      const ocrPeriod = periodsByNumber.get(period.period);
+      if (!ocrPeriod) {
+        return period;
+      }
+
+      const matchedSubject = findSubjectByOcrName(ocrPeriod.subject, subjects);
+      const subjectId =
+        matchedSubject?.id || period.subjectId || fallbackSubject?.id || "";
+      const subjectName =
+        ocrPeriod.subject.trim() ||
+        matchedSubject?.shortName ||
+        matchedSubject?.name ||
+        period.subjectName;
+
+      return {
+        ...period,
+        subjectId,
+        subjectName,
+        notes: ocrPeriod.notes
+          .map((note) => ({
+            type: normalizeBoardNoteType(note.type),
+            text: note.text.trim(),
+            done: false,
+          }))
+          .filter((note) => note.text),
+      };
+    }),
   };
 }
