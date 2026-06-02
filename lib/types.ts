@@ -100,8 +100,12 @@ export type EventSource = {
   id: string;
   title: string;
   url: string;
+  articleUrl: string;
+  pdfUrl: string;
   sourceType: EventSourceType;
   fetchedAt: string;
+  discoveredAt: string;
+  lastCheckedAt: string;
   status: EventSourceStatus;
   memo: string;
 };

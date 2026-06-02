@@ -1,48 +1,67 @@
 "use client";
 
 import Link from "next/link";
+import { useMemo, useState } from "react";
 import {
-  ArrowRight,
+  AlertTriangle,
+  BookOpen,
   CalendarClock,
+  Camera,
   ClipboardList,
-  NotebookPen,
+  ExternalLink,
+  Loader2,
   PackageCheck,
+  RefreshCw,
   School,
 } from "lucide-react";
-import { AssignmentCard, EventCountdown, TimetableSlot } from "@/components/school-cards";
-import { Card, EmptyState, PageHeader, secondaryButtonClass } from "@/components/ui";
+import { TimetableSlot } from "@/components/school-cards";
 import {
-  boardMemoToTimetable,
-  getBoardAttentionGroups,
-} from "@/lib/board";
+  Card,
+  EmptyState,
+  primaryButtonClass,
+  secondaryButtonClass,
+} from "@/components/ui";
+import { boardMemoToTimetable } from "@/lib/board";
 import {
   dayNames,
   daysBetween,
-  formatJapaneseDate,
   getDayOfWeek,
+  toDateInputValue,
 } from "@/lib/date";
-import {
-  boardNoteTypeLabels,
-  recurringTaskCategoryLabels,
-} from "@/lib/labels";
 import { matchMaterialsForPack } from "@/lib/materials";
 import { buildTomorrowPacks } from "@/lib/prep";
-import { getActiveRecurringGroups } from "@/lib/recurring";
 import { useSchoolData } from "@/lib/school-data";
+import { EventSource } from "@/lib/types";
+
+type ChikuzenEventsResponse = {
+  checkedAt: string;
+  sources: EventSource[];
+  error?: string;
+};
+
+function formatTomorrowLabel(date: Date, dayLabel: string) {
+  return `${date.getMonth() + 1}月${date.getDate()}日（${dayLabel}）`;
+}
+
+function sourceLink(source: EventSource) {
+  return source.pdfUrl || source.url;
+}
 
 export default function TodayPage() {
-  const { data, subjectById } = useSchoolData();
+  const { data, subjectById, upsertEventSource } = useSchoolData();
+  const [fetchingSchoolEvents, setFetchingSchoolEvents] = useState(false);
+  const [schoolFetchMessage, setSchoolFetchMessage] = useState("");
+  const [discoveredSources, setDiscoveredSources] = useState<EventSource[]>([]);
+
   const today = new Date();
   const tomorrow = new Date(today);
   tomorrow.setDate(today.getDate() + 1);
   const tomorrowDow = getDayOfWeek(tomorrow);
   const tomorrowLabel = tomorrowDow ? dayNames[tomorrowDow] : "日曜";
-  const tomorrowValue = [
-    tomorrow.getFullYear(),
-    String(tomorrow.getMonth() + 1).padStart(2, "0"),
-    String(tomorrow.getDate()).padStart(2, "0"),
-  ].join("-");
+  const tomorrowValue = toDateInputValue(tomorrow);
   const className = `${data.settings.grade}${data.settings.className}`;
+  const classLabel = `${data.settings.schoolName} ${className}`;
+
   const boardMemo =
     data.boardMemos.find(
       (memo) => memo.date === tomorrowValue && memo.className === className,
@@ -58,257 +77,178 @@ export default function TodayPage() {
     ? boardMemoToTimetable(boardMemo, subjectById)
     : weekdayTimetable;
 
-  const activeAssignments = data.assignments
-    .filter((assignment) => !["done", "submitted"].includes(assignment.status))
-    .sort((a, b) => daysBetween(a.dueDate) - daysBetween(b.dueDate));
-
-  const dueTomorrow = activeAssignments.filter(
-    (assignment) => daysBetween(assignment.dueDate) === 1,
-  );
-
-  const upcomingEvent = data.events
-    .filter((event) => daysBetween(event.date) >= 0)
-    .sort(
-      (a, b) =>
-        daysBetween(a.date) - daysBetween(b.date) ||
-        (b.importance === "high" ? 1 : 0) - (a.importance === "high" ? 1 : 0),
-    )[0];
-
   const tomorrowPacks = buildTomorrowPacks(nextTimetable, subjectById);
-  const allTomorrowItems = Array.from(
-    new Set(tomorrowPacks.flatMap((pack) => pack.items)),
-  );
-  const boardAttentionGroups = getBoardAttentionGroups(boardMemo);
-  const tomorrowSubjectIds = new Set(
-    nextTimetable.map((lesson) => lesson.subjectId).filter(Boolean),
-  );
-  const recurringGroups = getActiveRecurringGroups(
-    data.subjects.filter((subject) => tomorrowSubjectIds.has(subject.id)),
-  );
-  const classLabel = `${data.settings.schoolName} ${data.settings.grade}${data.settings.className}`;
+  const hasTomorrowItems = tomorrowPacks.some((pack) => pack.items.length);
+
+  const todayAssignments = data.assignments
+    .filter(
+      (assignment) =>
+        daysBetween(assignment.dueDate) === 0 &&
+        !["done", "submitted"].includes(assignment.status),
+    )
+    .sort((a, b) => a.priority.localeCompare(b.priority));
+
+  const countdownEvents = data.events
+    .map((event) => ({ event, daysLeft: daysBetween(event.date) }))
+    .filter(({ daysLeft }) => daysLeft > 0)
+    .sort((a, b) => {
+      const aUrgent = a.daysLeft <= 14 ? 0 : 1;
+      const bUrgent = b.daysLeft <= 14 ? 0 : 1;
+      return (
+        aUrgent - bUrgent ||
+        a.daysLeft - b.daysLeft ||
+        (b.event.importance === "high" ? 1 : 0) -
+          (a.event.importance === "high" ? 1 : 0)
+      );
+    })
+    .slice(0, 5);
+
+  const schoolSources = useMemo(() => {
+    const sources = discoveredSources.length
+      ? discoveredSources
+      : data.eventSources;
+    return [...sources]
+      .sort((a, b) =>
+        (b.lastCheckedAt || b.fetchedAt).localeCompare(
+          a.lastCheckedAt || a.fetchedAt,
+        ),
+      )
+      .slice(0, 4);
+  }, [data.eventSources, discoveredSources]);
+
+  async function refreshChikuzenEvents() {
+    setFetchingSchoolEvents(true);
+    setSchoolFetchMessage("");
+
+    try {
+      const response = await fetch("/api/chikuzen-events");
+      const payload = (await response.json()) as ChikuzenEventsResponse;
+
+      if (!response.ok || payload.error) {
+        throw new Error(payload.error ?? "筑前高校からの取得に失敗しました。");
+      }
+
+      payload.sources.forEach((source) => upsertEventSource(source));
+      setDiscoveredSources(payload.sources);
+      setSchoolFetchMessage(
+        payload.sources.length
+          ? `${payload.sources.length}件の行事予定PDFを検出しました。`
+          : "新しい行事予定PDFは検出されませんでした。",
+      );
+    } catch (error) {
+      setSchoolFetchMessage(
+        error instanceof Error
+          ? error.message
+          : "筑前高校からの取得に失敗しました。",
+      );
+    } finally {
+      setFetchingSchoolEvents(false);
+    }
+  }
 
   return (
     <>
-      <PageHeader
-        title="明日の準備"
-        description={`${formatJapaneseDate(tomorrow)} / ${tomorrowLabel}`}
-      />
-
-      <section className="mb-4 rounded-lg border border-cyan-300/30 bg-cyan-400/10 p-4">
+      <header className="mb-4 rounded-lg border border-cyan-300/25 bg-cyan-400/10 p-4">
         <div className="flex items-center gap-3">
           <span className="grid size-10 shrink-0 place-items-center rounded-md bg-cyan-400 text-slate-950">
             <School size={20} aria-hidden="true" />
           </span>
-          <div>
-            <p className="text-xs font-medium text-cyan-100">明日の準備先</p>
-            <h2 className="text-xl font-semibold text-white">{classLabel}</h2>
+          <div className="min-w-0">
+            <h1 className="break-words text-2xl font-semibold tracking-normal text-white">
+              {classLabel}
+            </h1>
+            <p className="mt-1 text-sm text-cyan-100">
+              明日: {formatTomorrowLabel(tomorrow, tomorrowLabel)}
+            </p>
           </div>
         </div>
-      </section>
+      </header>
 
-      <div className="grid gap-4 lg:grid-cols-[1.35fr_0.9fr]">
-        <div className="grid gap-4">
-          <Card
-            title="明日の時間割"
-            action={
-              <Link
-                className={secondaryButtonClass}
-                href={boardMemo ? "/board" : "/timetable"}
-              >
-                {boardMemo ? "黒板メモ" : "編集"}
-                {boardMemo ? (
-                  <NotebookPen size={15} aria-hidden="true" />
-                ) : (
-                  <ArrowRight size={15} aria-hidden="true" />
-                )}
-              </Link>
-            }
-          >
-            {boardMemo && (
-              <p className="mb-3 rounded-md border border-cyan-300/25 bg-cyan-400/10 px-3 py-2 text-xs font-medium text-cyan-100">
-                黒板メモを優先して表示しています。
-              </p>
-            )}
-            {nextTimetable.length ? (
-              <div className="grid gap-2 sm:grid-cols-2">
-                {nextTimetable.map((item) => (
-                  <TimetableSlot
-                    key={item.id}
-                    item={item}
-                    subject={subjectById.get(item.subjectId)}
-                  />
-                ))}
-              </div>
-            ) : (
-              <EmptyState text="明日の時間割はまだ登録されていません。" />
-            )}
-          </Card>
-
-          <Card
-            title="明日の提出物"
-            action={
-              <Link className={secondaryButtonClass} href="/assignments">
-                追加
-                <ClipboardList size={15} aria-hidden="true" />
-              </Link>
-            }
-          >
-            {dueTomorrow.length ? (
-              <div className="grid gap-2">
-                {dueTomorrow.map((assignment) => (
-                  <AssignmentCard
-                    key={assignment.id}
-                    assignment={assignment}
-                    subject={subjectById.get(assignment.subjectId)}
-                  />
-                ))}
-              </div>
-            ) : (
-              <EmptyState text="明日締切の未完了提出物はありません。" />
-            )}
-          </Card>
-
-          <Card title="明日の準備チェック">
-            <div className="grid grid-cols-3 gap-2 text-center">
-              <div className="rounded-md border border-white/10 bg-[#0d141c] px-2 py-3">
-                <span className="block text-2xl font-semibold text-cyan-200">
-                  {nextTimetable.length}
-                </span>
-                <span className="text-xs text-slate-400">授業</span>
-              </div>
-              <div className="rounded-md border border-white/10 bg-[#0d141c] px-2 py-3">
-                <span className="block text-2xl font-semibold text-amber-200">
-                  {allTomorrowItems.length}
-                </span>
-                <span className="text-xs text-slate-400">持ち物</span>
-              </div>
-              <div className="rounded-md border border-white/10 bg-[#0d141c] px-2 py-3">
-                <span className="block text-2xl font-semibold text-rose-200">
-                  {dueTomorrow.length}
-                </span>
-                <span className="text-xs text-slate-400">提出物</span>
-              </div>
+      <section className="grid grid-cols-2 gap-3 max-[420px]:grid-cols-1">
+        <Card
+          title="明日の時間割"
+          action={
+            <Link
+              className={secondaryButtonClass}
+              href={boardMemo ? "/board" : "/timetable"}
+            >
+              {boardMemo ? "黒板" : "編集"}
+            </Link>
+          }
+        >
+          {boardMemo && (
+            <p className="mb-3 rounded-md border border-cyan-300/25 bg-cyan-400/10 px-3 py-2 text-xs font-medium text-cyan-100">
+              黒板メモ優先
+            </p>
+          )}
+          {nextTimetable.length ? (
+            <div className="grid gap-2">
+              {nextTimetable.map((item) => (
+                <TimetableSlot
+                  key={item.id}
+                  item={item}
+                  subject={subjectById.get(item.subjectId)}
+                />
+              ))}
             </div>
-          </Card>
+          ) : (
+            <EmptyState text="明日の時間割は未登録です。" />
+          )}
+        </Card>
 
-          <Card title="固定で確認するもの">
-            {recurringGroups.length ? (
-              <div className="grid gap-2 sm:grid-cols-2">
-                {recurringGroups.map((group) => (
-                  <article
-                    key={group.subjectId}
-                    className="rounded-lg border border-white/10 bg-[#0d141c] p-3"
-                  >
-                    <div className="mb-2 flex items-center gap-2">
-                      <span
-                        className="size-2 rounded-full"
-                        style={{ backgroundColor: group.subjectColor }}
-                      />
-                      <h2 className="text-sm font-semibold text-white">
-                        {group.subjectShortName}
-                      </h2>
-                    </div>
-                    <ul className="grid gap-1.5">
-                      {group.tasks.map((task) => (
-                        <li
-                          key={task.id}
-                          className="flex items-start gap-2 break-words text-sm text-slate-300"
-                        >
-                          <span className="mt-0.5 shrink-0 rounded-md border border-cyan-300/20 bg-cyan-400/10 px-2 py-0.5 text-[11px] font-medium text-cyan-100">
-                            {recurringTaskCategoryLabels[task.category].replace(
-                              "固定",
-                              "",
-                            )}
-                          </span>
-                          <span>{task.title}</span>
-                        </li>
-                      ))}
-                    </ul>
-                  </article>
-                ))}
-              </div>
-            ) : (
-              <EmptyState text="明日の時間割に固定提出物・小テスト・予習がある教科はありません。" />
-            )}
-          </Card>
-        </div>
-
-        <div className="grid gap-4 content-start">
-          <Card
-            title="明日の注意"
-            action={
-              <Link className={secondaryButtonClass} href="/board">
-                入力
-                <NotebookPen size={15} aria-hidden="true" />
-              </Link>
-            }
-          >
-            {boardAttentionGroups.length ? (
-              <div className="grid gap-2">
-                {boardAttentionGroups.map((group) => (
-                  <article
-                    key={group.key}
-                    className="rounded-lg border border-white/10 bg-[#0d141c] p-3"
-                  >
-                    <div className="mb-2 flex items-center justify-between gap-3">
-                      <h2 className="text-sm font-semibold text-white">
-                        {group.subjectName}
-                      </h2>
-                      <span className="rounded-md bg-white/10 px-2 py-1 text-xs text-slate-300">
-                        {group.period}限
-                      </span>
-                    </div>
-                    <ul className="grid gap-2">
-                      {group.notes.map((note, index) => (
-                        <li
-                          key={`${group.key}-${index}`}
-                          className="flex items-start gap-2 text-sm text-slate-200"
-                        >
-                          <span className="mt-0.5 shrink-0 rounded-md border border-cyan-300/20 bg-cyan-400/10 px-2 py-0.5 text-[11px] font-medium text-cyan-100">
-                            {boardNoteTypeLabels[note.type]}
-                          </span>
-                          <span className={note.done ? "line-through opacity-60" : ""}>
-                            {note.text}
-                          </span>
-                        </li>
-                      ))}
-                    </ul>
-                  </article>
-                ))}
-              </div>
-            ) : (
-              <EmptyState text="明日の黒板メモを登録すると、小テスト・予習・宿題・持ち物・連絡がここに出ます。" />
-            )}
-          </Card>
-
-          <Card
-            title="明日の持ち物"
-            action={
-              <Link className={secondaryButtonClass} href="/materials">
-                教材
-                <PackageCheck size={15} aria-hidden="true" />
-              </Link>
-            }
-          >
-            {tomorrowPacks.some((pack) => pack.items.length) ? (
-              <div className="grid gap-2">
-                {tomorrowPacks.map((pack) => (
+        <Card
+          title="明日の持ち物"
+          action={
+            <Link className={secondaryButtonClass} href="/materials">
+              教材
+              <PackageCheck size={15} aria-hidden="true" />
+            </Link>
+          }
+        >
+          {hasTomorrowItems ? (
+            <div className="grid gap-2">
+              {tomorrowPacks.map((pack) => {
+                const materialMatches = matchMaterialsForPack(
+                  pack,
+                  data.materials,
+                ).filter((match) => match.material);
+                return (
                   <article
                     key={pack.key}
                     className="rounded-lg border border-white/10 bg-[#0d141c] p-3"
                   >
-                    <div className="mb-2 flex items-center justify-between gap-3">
+                    <div className="mb-2 flex items-center justify-between gap-2">
                       <span className="rounded-md bg-white/10 px-2 py-1 text-xs font-semibold text-slate-200">
                         {pack.period}限
                       </span>
-                      <span className="inline-flex items-center gap-1.5 text-sm font-medium text-white">
-                        <span
-                          className="size-2 rounded-full"
-                          style={{ backgroundColor: pack.subjectColor }}
-                        />
+                      <span className="break-words text-right text-sm font-semibold text-white">
                         {pack.subjectName}
                       </span>
                     </div>
+                    {materialMatches.length ? (
+                      <div className="mb-2 grid grid-cols-2 gap-2">
+                        {materialMatches.map((match) => (
+                          <div
+                            key={match.material?.id}
+                            className="rounded-md border border-cyan-300/20 bg-cyan-400/[0.06] p-2"
+                          >
+                            <div className="aspect-[4/3] overflow-hidden rounded bg-black/25">
+                              {match.material?.imageDataUrl ? (
+                                // eslint-disable-next-line @next/next/no-img-element
+                                <img
+                                  className="size-full object-contain"
+                                  src={match.material.imageDataUrl}
+                                  alt={match.material.title}
+                                />
+                              ) : null}
+                            </div>
+                            <p className="mt-1 break-words text-[11px] font-medium text-white">
+                              {match.material?.shortTitle || match.item}
+                            </p>
+                          </div>
+                        ))}
+                      </div>
+                    ) : null}
                     {pack.items.length ? (
                       <ul className="flex flex-wrap gap-2">
                         {pack.items.map((item) => (
@@ -321,80 +261,164 @@ export default function TodayPage() {
                         ))}
                       </ul>
                     ) : (
-                      <p className="text-xs text-slate-500">
-                        固定持ち物は未設定です。
-                      </p>
+                      <p className="text-xs text-slate-500">固定持ち物なし</p>
                     )}
                   </article>
-                ))}
-                {tomorrowPacks.map((pack) => {
-                  const matches = matchMaterialsForPack(pack, data.materials);
-                  const visualMatches = matches.filter((match) => match.material);
-                  if (!visualMatches.length) {
-                    return null;
-                  }
+                );
+              })}
+            </div>
+          ) : (
+            <EmptyState text="明日の持ち物は未登録です。" />
+          )}
+        </Card>
+      </section>
 
-                  return (
-                    <article
-                      key={`${pack.key}-materials`}
-                      className="rounded-lg border border-cyan-300/20 bg-cyan-400/[0.06] p-3"
-                    >
-                      <div className="mb-3 flex items-center justify-between gap-3">
-                        <h2 className="text-sm font-semibold text-white">
-                          {pack.subjectName}の教材
-                        </h2>
-                        <span className="rounded-md bg-white/10 px-2 py-1 text-xs text-slate-300">
-                          {pack.period}限
-                        </span>
-                      </div>
-                      <div className="grid grid-cols-2 gap-2">
-                        {visualMatches.map((match) => (
-                          <div
-                            key={`${pack.key}-${match.material?.id}`}
-                            className="rounded-md border border-white/10 bg-[#0d141c] p-2"
-                          >
-                            <div className="aspect-[4/3] overflow-hidden rounded bg-black/25">
-                              {match.material?.imageDataUrl ? (
-                                // eslint-disable-next-line @next/next/no-img-element
-                                <img
-                                  src={match.material.imageDataUrl}
-                                  alt={match.material.title}
-                                  className="size-full object-contain"
-                                />
-                              ) : null}
-                            </div>
-                            <p className="mt-2 break-words text-xs font-medium text-white">
-                              {match.material?.shortTitle || match.item}
-                            </p>
-                          </div>
-                        ))}
-                      </div>
-                    </article>
-                  );
-                })}
-              </div>
-            ) : (
-              <EmptyState text="明日の時間割か教科ごとの固定持ち物を登録してください。" />
-            )}
-          </Card>
+      <section className="mt-4 grid gap-4 lg:grid-cols-[0.85fr_1.15fr]">
+        <Card
+          title="今日提出のもの"
+          action={
+            <Link className={secondaryButtonClass} href="/assignments">
+              提出物
+            </Link>
+          }
+        >
+          {todayAssignments.length ? (
+            <ul className="grid gap-2">
+              {todayAssignments.map((assignment) => (
+                <li
+                  key={assignment.id}
+                  className="flex items-start gap-2 rounded-lg border border-rose-300/30 bg-rose-500/[0.08] p-3 text-sm font-semibold text-white"
+                >
+                  <AlertTriangle
+                    className="mt-0.5 shrink-0 text-rose-200"
+                    size={16}
+                    aria-hidden="true"
+                  />
+                  <span className="break-words">{assignment.title}</span>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <EmptyState text="今日は提出物なし" />
+          )}
+        </Card>
 
-          <Card
-            title="次の重要予定"
-            action={
-              <Link className={secondaryButtonClass} href="/events">
-                登録
-                <CalendarClock size={15} aria-hidden="true" />
-              </Link>
-            }
-          >
-            {upcomingEvent ? (
-              <EventCountdown event={upcomingEvent} />
-            ) : (
-              <EmptyState text="行事・テストを登録すると残り日数が表示されます。" />
-            )}
-          </Card>
-        </div>
-      </div>
+        <Card
+          title="行事カウントダウン"
+          action={
+            <Link className={secondaryButtonClass} href="/events">
+              行事
+              <CalendarClock size={15} aria-hidden="true" />
+            </Link>
+          }
+        >
+          {countdownEvents.length ? (
+            <ul className="grid gap-2">
+              {countdownEvents.map(({ event, daysLeft }) => (
+                <li
+                  key={event.id}
+                  className={`flex items-center justify-between gap-3 rounded-lg border p-3 ${
+                    daysLeft <= 14
+                      ? "border-amber-300/35 bg-amber-400/[0.10]"
+                      : "border-white/10 bg-[#0d141c]"
+                  }`}
+                >
+                  <div className="flex min-w-0 items-start gap-2">
+                    {daysLeft <= 14 && (
+                      <AlertTriangle
+                        className="mt-0.5 shrink-0 text-amber-100"
+                        size={16}
+                        aria-hidden="true"
+                      />
+                    )}
+                    <span className="break-words text-sm font-semibold text-white">
+                      {event.title}まで{daysLeft}日
+                    </span>
+                  </div>
+                  <span className="shrink-0 rounded-md bg-black/25 px-2 py-1 text-xs text-slate-300">
+                    {event.date}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <EmptyState text="未来の行事はまだ登録されていません。" />
+          )}
+        </Card>
+      </section>
+
+      <section className="mt-4 grid gap-4 lg:grid-cols-[0.85fr_1.15fr]">
+        <Card title="ショートカット">
+          <div className="grid grid-cols-2 gap-2">
+            <Link className={secondaryButtonClass} href="/board">
+              <Camera size={16} aria-hidden="true" />
+              黒板OCR
+            </Link>
+            <Link className={secondaryButtonClass} href="/materials">
+              <BookOpen size={16} aria-hidden="true" />
+              教材
+            </Link>
+            <Link className={secondaryButtonClass} href="/timetable">
+              <CalendarClock size={16} aria-hidden="true" />
+              時間割
+            </Link>
+            <Link className={secondaryButtonClass} href="/assignments">
+              <ClipboardList size={16} aria-hidden="true" />
+              提出物
+            </Link>
+          </div>
+        </Card>
+
+        <Card
+          title="学校からのお知らせ"
+          action={
+            <button
+              className={primaryButtonClass}
+              type="button"
+              onClick={refreshChikuzenEvents}
+              disabled={fetchingSchoolEvents}
+            >
+              {fetchingSchoolEvents ? (
+                <Loader2 className="animate-spin" size={16} aria-hidden="true" />
+              ) : (
+                <RefreshCw size={16} aria-hidden="true" />
+              )}
+              筑前高校から更新取得
+            </button>
+          }
+        >
+          {schoolFetchMessage && (
+            <p className="mb-3 rounded-md border border-cyan-300/25 bg-cyan-400/10 px-3 py-2 text-xs font-medium text-cyan-100">
+              {schoolFetchMessage}
+            </p>
+          )}
+          {schoolSources.length ? (
+            <div className="grid gap-2">
+              {schoolSources.map((source) => (
+                <article
+                  key={source.id}
+                  className="rounded-lg border border-white/10 bg-[#0d141c] p-3"
+                >
+                  <p className="text-sm font-semibold text-white">
+                    {source.title}を検出
+                  </p>
+                  <Link
+                    className="mt-2 inline-flex max-w-full items-center gap-1 break-all text-xs text-cyan-200 underline-offset-4 hover:underline"
+                    href={sourceLink(source)}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    PDFを開く
+                    <ExternalLink size={13} aria-hidden="true" />
+                  </Link>
+                </article>
+              ))}
+            </div>
+          ) : (
+            <EmptyState text="ボタンを押すと筑前高校のお知らせから行事予定PDFを探します。" />
+          )}
+        </Card>
+      </section>
     </>
   );
 }

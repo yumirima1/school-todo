@@ -44,6 +44,7 @@ function createSource(
   memo: string,
   id = "",
 ): EventSource {
+  const now = new Date().toISOString();
   return {
     id,
     title:
@@ -53,8 +54,12 @@ function createSource(
           ? "年間行事予定PDF"
           : "手動行事予定メモ",
     url,
+    articleUrl: url,
+    pdfUrl: url,
     sourceType,
-    fetchedAt: new Date().toISOString(),
+    fetchedAt: now,
+    discoveredAt: now,
+    lastCheckedAt: now,
     status: "pending",
     memo,
   };
@@ -77,10 +82,11 @@ export default function ImportEventsPage() {
   }
 
   function handleEdit(source: EventSource) {
+    const pdfUrl = source.pdfUrl || source.url;
     setEditingSource(source);
     setForm({
-      monthlyUrl: source.sourceType === "monthly" ? source.url : "",
-      yearlyUrl: source.sourceType === "yearly" ? source.url : "",
+      monthlyUrl: source.sourceType === "monthly" ? pdfUrl : "",
+      yearlyUrl: source.sourceType === "yearly" ? pdfUrl : "",
       memo: source.memo,
     });
   }
@@ -144,7 +150,7 @@ export default function ImportEventsPage() {
               </Link>
             </div>
             <p className="mt-3 rounded-md border border-amber-300/25 bg-amber-400/10 px-3 py-2 text-xs leading-5 text-amber-100">
-              Phase 4ではPDF解析は今後対応予定です。学校HPから記事を開き、「PDFはこちら」のURLを貼り付けて保存します。
+              Phase 6ではホームから行事予定PDFを自動検出できます。ここでは手動でPDF URLを追加・編集できます。
             </p>
           </Card>
 
@@ -241,20 +247,34 @@ export default function ImportEventsPage() {
                       </h2>
                       <Link
                         className="mt-2 inline-flex max-w-full items-center gap-1 break-all text-xs text-cyan-200 underline-offset-4 hover:underline"
-                        href={source.url}
+                        href={source.pdfUrl || source.url}
                         target="_blank"
                         rel="noreferrer"
                       >
-                        {source.url}
+                        {source.pdfUrl || source.url}
                         <ExternalLink size={13} aria-hidden="true" />
                       </Link>
+                      {source.articleUrl && source.articleUrl !== source.pdfUrl && (
+                        <Link
+                          className="mt-1 inline-flex max-w-full items-center gap-1 break-all text-[11px] text-slate-400 underline-offset-4 hover:underline"
+                          href={source.articleUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                        >
+                          記事: {source.articleUrl}
+                          <ExternalLink size={12} aria-hidden="true" />
+                        </Link>
+                      )}
                       {source.memo && (
                         <p className="mt-2 break-words rounded-md bg-black/20 px-2 py-1.5 text-xs text-slate-300">
                           {source.memo}
                         </p>
                       )}
                       <p className="mt-2 text-[11px] text-slate-500">
-                        保存日時: {new Date(source.fetchedAt).toLocaleString("ja-JP")}
+                        最終確認:{" "}
+                        {new Date(
+                          source.lastCheckedAt || source.fetchedAt,
+                        ).toLocaleString("ja-JP")}
                       </p>
                     </div>
                     <div className="flex shrink-0 flex-col gap-2">
@@ -293,7 +313,7 @@ export default function ImportEventsPage() {
             <FileDown size={18} aria-hidden="true" />
           </span>
           <p className="text-sm leading-6 text-slate-300">
-            クライアント側から学校HPを直接取得するとCORSで失敗する可能性があります。将来はNext.js API Routeでサーバー側fetchし、PDFテキスト抽出やOCR結果をSchoolEventへ変換します。
+            ホームの「筑前高校から更新取得」から、お知らせ一覧の行事予定PDFをサーバー側で検出できます。Phase 6ではPDFの保存まで行い、PDF解析とSchoolEvent自動生成は次フェーズで接続します。
           </p>
         </div>
       </Card>

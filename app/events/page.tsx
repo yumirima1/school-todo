@@ -196,11 +196,11 @@ export default function EventsPage() {
                     </div>
                     <Link
                       className="inline-flex max-w-full items-center gap-1 break-all text-xs text-cyan-200 underline-offset-4 hover:underline"
-                      href={source.url}
+                      href={source.pdfUrl || source.url}
                       target="_blank"
                       rel="noreferrer"
                     >
-                      {source.url}
+                      {source.pdfUrl || source.url}
                       <ExternalLink size={13} aria-hidden="true" />
                     </Link>
                     {source.memo && (

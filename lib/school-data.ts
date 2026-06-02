@@ -300,6 +300,20 @@ function normalizeData(data: Partial<SchoolData>): SchoolData {
     }
   }
 
+  const eventSources = (data.eventSources ?? []).map((source) => {
+    const pdfUrl = source.pdfUrl ?? source.url ?? "";
+    const fetchedAt = source.fetchedAt ?? new Date().toISOString();
+    return {
+      ...source,
+      url: source.url ?? pdfUrl,
+      articleUrl: source.articleUrl ?? source.url ?? pdfUrl,
+      pdfUrl,
+      fetchedAt,
+      discoveredAt: source.discoveredAt ?? fetchedAt,
+      lastCheckedAt: source.lastCheckedAt ?? fetchedAt,
+    };
+  });
+
   return {
     subjects,
     timetable: data.timetable ?? [],
@@ -307,7 +321,7 @@ function normalizeData(data: Partial<SchoolData>): SchoolData {
     studyTasks: data.studyTasks ?? [],
     materials: data.materials ?? [],
     events: data.events ?? [],
-    eventSources: data.eventSources ?? [],
+    eventSources,
     boardMemos: data.boardMemos ?? defaultSchoolData.boardMemos,
     settings: { ...defaultSchoolData.settings, ...data.settings },
   };
@@ -460,12 +474,20 @@ export function useSchoolData() {
     setData((current) => {
       const id = input.id || createId("event-source");
       const nextSource = { ...input, id };
+      const nextPdfUrl = nextSource.pdfUrl || nextSource.url;
       return {
         ...current,
         eventSources: [
-          ...current.eventSources.filter((source) => source.id !== id),
+          ...current.eventSources.filter(
+            (source) =>
+              source.id !== id && (source.pdfUrl || source.url) !== nextPdfUrl,
+          ),
           nextSource,
-        ].sort((a, b) => b.fetchedAt.localeCompare(a.fetchedAt)),
+        ].sort((a, b) =>
+          (b.lastCheckedAt || b.fetchedAt).localeCompare(
+            a.lastCheckedAt || a.fetchedAt,
+          ),
+        ),
       };
     });
   }, []);

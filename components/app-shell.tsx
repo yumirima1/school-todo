@@ -53,7 +53,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               </span>
             </Link>
             <span className="rounded-md border border-cyan-300/30 px-2.5 py-1 text-xs font-medium text-cyan-200">
-              Phase 4
+              Phase 6
             </span>
           </div>
         </header>
