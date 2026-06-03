@@ -2,6 +2,8 @@ import {
   BoardMemo,
   BoardNote,
   BoardNoteType,
+  BoardNotebookSummary,
+  BoardOcrRegionResult,
   BoardOcrResult,
   BoardPeriod,
   Subject,
@@ -310,6 +312,107 @@ export function boardOcrTextToResult(text: string, subjects: Subject[]): BoardOc
     periods: periods.filter(
       (period) => period.subject !== "未設定" || period.notes.length,
     ),
+  };
+}
+
+function isLikelyTask(text: string) {
+  return /宿題|課題|提出|持ち物|持参|用意|p\.?\s*\d+|ページ|問\d+|小テスト|単語テスト|予習/i.test(
+    text,
+  );
+}
+
+function cleanupNotebookLine(text: string) {
+  return stripNotePrefix(text)
+    .replace(/\s+/g, " ")
+    .replace(/[|｜]+/g, " ")
+    .trim();
+}
+
+export function createBoardNotebookSummary(
+  regions: BoardOcrRegionResult[],
+  subjects: Subject[],
+): BoardNotebookSummary {
+  const readableRegions = regions.filter((region) => region.text.trim());
+  const allLines = readableRegions
+    .flatMap((region) =>
+      region.text
+        .split(/\r?\n/)
+        .map(cleanupNotebookLine)
+        .filter(Boolean)
+        .map((line) => ({
+          line,
+          region,
+        })),
+    )
+    .filter(({ line }) => line.length >= 2);
+
+  const subjectHit = allLines
+    .map(({ line }) => findSubjectByOcrName(line, subjects))
+    .find(Boolean);
+
+  const tasks = Array.from(
+    new Set(
+      allLines
+        .filter(({ line }) => isLikelyTask(line))
+        .map(({ line }) => line),
+    ),
+  );
+  const boardContent = Array.from(
+    new Set(
+      allLines
+        .filter(({ line }) => !isLikelyTask(line))
+        .map(({ line }) => line),
+    ),
+  ).slice(0, 12);
+
+  const unknowns = regions
+    .filter((region) => region.unknownReason)
+    .map((region) => `${region.label}: ${region.unknownReason}`);
+
+  const confidence =
+    regions.length === 0
+      ? 0
+      : Math.round(
+          regions.reduce((total, region) => total + region.confidence, 0) /
+            regions.length,
+        );
+
+  return {
+    subject: subjectHit?.shortName || subjectHit?.name || "不明",
+    boardContent,
+    tasks,
+    unknowns,
+    sourceRegions: readableRegions.map((region) => region.label),
+    confidence,
+  };
+}
+
+export function boardNotebookSummaryToOcrResult(
+  summary: BoardNotebookSummary,
+): BoardOcrResult {
+  const notes = [
+    ...summary.boardContent.map((text) => ({
+      type: "notice" as BoardNoteType,
+      text,
+    })),
+    ...summary.tasks.map((text) => ({
+      type: classifyBoardNoteText(text),
+      text,
+    })),
+    ...summary.unknowns.map((text) => ({
+      type: "notice" as BoardNoteType,
+      text: `不明: ${text}`,
+    })),
+  ];
+
+  return {
+    periods: [
+      {
+        period: 1,
+        subject: summary.subject,
+        notes,
+      },
+    ],
   };
 }
 

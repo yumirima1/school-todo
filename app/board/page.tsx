@@ -24,17 +24,126 @@ import {
 import {
   createBoardNote,
   createEmptyBoardMemo,
+  boardNotebookSummaryToOcrResult,
   boardOcrTextToResult,
   boardOcrResultToMemo,
+  createBoardNotebookSummary,
   updateBoardNote,
   updateBoardPeriod,
 } from "@/lib/board";
 import { toDateInputValue } from "@/lib/date";
 import { boardNoteTypeLabels } from "@/lib/labels";
 import { useSchoolData } from "@/lib/school-data";
-import { BoardMemo, BoardNoteType, BoardOcrResult } from "@/lib/types";
+import {
+  BoardMemo,
+  BoardNoteType,
+  BoardNotebookSummary,
+  BoardOcrRegionResult,
+  BoardOcrResult,
+} from "@/lib/types";
 
 type OcrStatus = "idle" | "loading" | "success" | "error";
+
+type SplitImageRegion = {
+  id: string;
+  label: string;
+  row: number;
+  column: number;
+  dataUrl: string;
+};
+
+const splitRegionLabels = [
+  "左上",
+  "中央上",
+  "右上",
+  "左下",
+  "中央下",
+  "右下",
+];
+
+function readFileAsDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (typeof reader.result === "string") {
+        resolve(reader.result);
+        return;
+      }
+      reject(new Error("画像を読み込めませんでした。"));
+    };
+    reader.onerror = () => reject(new Error("画像を読み込めませんでした。"));
+    reader.readAsDataURL(file);
+  });
+}
+
+function loadImage(dataUrl: string): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+    image.onload = () => resolve(image);
+    image.onerror = () => reject(new Error("画像を表示できませんでした。"));
+    image.src = dataUrl;
+  });
+}
+
+async function splitImage(file: File, columns = 3, rows = 2) {
+  const dataUrl = await readFileAsDataUrl(file);
+  const image = await loadImage(dataUrl);
+  const regions: SplitImageRegion[] = [];
+  const sourceWidth = image.naturalWidth || image.width;
+  const sourceHeight = image.naturalHeight || image.height;
+  const regionWidth = Math.floor(sourceWidth / columns);
+  const regionHeight = Math.floor(sourceHeight / rows);
+
+  for (let row = 0; row < rows; row += 1) {
+    for (let column = 0; column < columns; column += 1) {
+      const canvas = document.createElement("canvas");
+      const sourceX = column * regionWidth;
+      const sourceY = row * regionHeight;
+      const width =
+        column === columns - 1 ? sourceWidth - sourceX : regionWidth;
+      const height = row === rows - 1 ? sourceHeight - sourceY : regionHeight;
+      canvas.width = width;
+      canvas.height = height;
+      const context = canvas.getContext("2d");
+      if (!context) {
+        continue;
+      }
+      context.drawImage(image, sourceX, sourceY, width, height, 0, 0, width, height);
+      const index = row * columns + column;
+      regions.push({
+        id: `region-${row + 1}-${column + 1}`,
+        label: splitRegionLabels[index] ?? `${row + 1}-${column + 1}`,
+        row,
+        column,
+        dataUrl: canvas.toDataURL("image/png"),
+      });
+    }
+  }
+
+  return regions;
+}
+
+function formatNotebookSummary(summary: BoardNotebookSummary) {
+  return [
+    `教科: ${summary.subject}`,
+    "",
+    "板書内容:",
+    ...(summary.boardContent.length
+      ? summary.boardContent.map((item) => `- ${item}`)
+      : ["- 不明"]),
+    "",
+    "宿題・提出物:",
+    ...(summary.tasks.length ? summary.tasks.map((item) => `- ${item}`) : ["- なし"]),
+    "",
+    "不明:",
+    ...(summary.unknowns.length
+      ? summary.unknowns.map((item) => `- ${item}`)
+      : ["- なし"]),
+    "",
+    `信頼度: ${summary.confidence}%`,
+    `読み取り領域: ${summary.sourceRegions.join("、") || "なし"}`,
+  ].join("\n");
+}
 
 function getTomorrowValue() {
   const tomorrow = new Date();
@@ -56,6 +165,9 @@ export default function BoardPage() {
   const [ocrText, setOcrText] = useState("");
   const [ocrProgress, setOcrProgress] = useState(0);
   const [ocrSource, setOcrSource] = useState("");
+  const [ocrRegions, setOcrRegions] = useState<BoardOcrRegionResult[]>([]);
+  const [notebookSummary, setNotebookSummary] =
+    useState<BoardNotebookSummary | null>(null);
 
   const sortedMemos = useMemo(() => {
     return [...data.boardMemos].sort((a, b) => b.date.localeCompare(a.date));
@@ -69,6 +181,8 @@ export default function BoardPage() {
     setOcrText("");
     setOcrProgress(0);
     setOcrSource("");
+    setOcrRegions([]);
+    setNotebookSummary(null);
   }
 
   function handleImageChange(file: File | null) {
@@ -80,6 +194,8 @@ export default function BoardPage() {
     setOcrText("");
     setOcrProgress(0);
     setOcrSource("");
+    setOcrRegions([]);
+    setNotebookSummary(null);
 
     if (!file || ["image/heic", "image/heif"].includes(file.type)) {
       return;
@@ -99,6 +215,7 @@ export default function BoardPage() {
   ) {
     setOcrResult(result);
     setOcrSource(source);
+    setNotebookSummary(null);
     if (extractedText) {
       setOcrText(extractedText);
     }
@@ -144,6 +261,104 @@ export default function BoardPage() {
     } finally {
       await worker.terminate();
     }
+  }
+
+  async function runSplitOcr() {
+    if (!boardImageFile) {
+      return;
+    }
+
+    setOcrStatus("loading");
+    setOcrError("");
+    setOcrSource("3×2分割OCR");
+    setOcrProgress(0);
+    setOcrResult(null);
+    setNotebookSummary(null);
+    setOcrRegions([]);
+
+    try {
+      const splitRegions = await splitImage(boardImageFile, 3, 2);
+      const { createWorker } = await import("tesseract.js");
+      const worker = await createWorker("jpn+eng");
+      const recognizedRegions: BoardOcrRegionResult[] = [];
+
+      try {
+        for (const [index, region] of splitRegions.entries()) {
+          setOcrProgress(Math.round((index / splitRegions.length) * 100));
+          const {
+            data: { text, confidence },
+          } = await worker.recognize(region.dataUrl);
+          const normalizedText = text.trim();
+          const roundedConfidence = Math.max(0, Math.round(confidence ?? 0));
+          const unknownReason = !normalizedText
+            ? "文字を抽出できませんでした"
+            : roundedConfidence < 45
+              ? "信頼度が低いため要確認"
+              : "";
+          const recognizedRegion = {
+            id: region.id,
+            label: region.label,
+            row: region.row,
+            column: region.column,
+            text: normalizedText,
+            confidence: roundedConfidence,
+            unknownReason,
+          };
+          recognizedRegions.push(recognizedRegion);
+          setOcrRegions([...recognizedRegions]);
+        }
+      } finally {
+        await worker.terminate();
+      }
+
+      const combinedText = recognizedRegions
+        .map(
+          (region) =>
+            `[${region.label} / 信頼度 ${region.confidence}%]\n${
+              region.text || "不明"
+            }`,
+        )
+        .join("\n\n");
+      setOcrText(combinedText);
+      setOcrSource("3×2分割OCR");
+      setOcrProgress(100);
+      setOcrStatus("success");
+    } catch (error) {
+      setOcrStatus("error");
+      setOcrError(
+        error instanceof Error
+          ? error.message
+          : "分割OCRに失敗しました。手入力へ切り替えてください。",
+      );
+    }
+  }
+
+  function createNotebookFromOcr() {
+    const fallbackRegions: BoardOcrRegionResult[] = ocrText.trim()
+      ? [
+          {
+            id: "edited-text",
+            label: "編集済みOCR",
+            row: 0,
+            column: 0,
+            text: ocrText,
+            confidence: 50,
+            unknownReason: "",
+          },
+        ]
+      : [];
+    const summary = createBoardNotebookSummary(
+      ocrRegions.length ? ocrRegions : fallbackRegions,
+      data.subjects,
+    );
+    const result = boardNotebookSummaryToOcrResult(summary);
+    setNotebookSummary(summary);
+    setOcrResult(result);
+    setOcrSource("分割OCRノート化");
+    setOcrText(formatNotebookSummary(summary));
+    setMemo((current) => boardOcrResultToMemo(result, current, data.subjects));
+    setOcrStatus("success");
+    setOcrProgress(100);
   }
 
   async function analyzeBoardImage() {
@@ -381,19 +596,41 @@ export default function BoardPage() {
                       HEIC画像は端末やブラウザによってプレビューや無料OCRが失敗する場合があります。失敗時はjpg / pngで再撮影してください。
                     </div>
                   )}
-                  <button
-                    className={primaryButtonClass}
-                    type="button"
-                    onClick={analyzeBoardImage}
-                    disabled={ocrStatus === "loading"}
-                  >
-                    {ocrStatus === "loading" ? (
-                      <Loader2 className="animate-spin" size={16} aria-hidden="true" />
-                    ) : (
-                      <WandSparkles size={16} aria-hidden="true" />
-                    )}
-                    {ocrStatus === "loading" ? "解析中" : "黒板を解析"}
-                  </button>
+                  <div className="grid gap-2 sm:grid-cols-3">
+                    <button
+                      className={primaryButtonClass}
+                      type="button"
+                      onClick={analyzeBoardImage}
+                      disabled={ocrStatus === "loading"}
+                    >
+                      {ocrStatus === "loading" ? (
+                        <Loader2
+                          className="animate-spin"
+                          size={16}
+                          aria-hidden="true"
+                        />
+                      ) : (
+                        <WandSparkles size={16} aria-hidden="true" />
+                      )}
+                      {ocrStatus === "loading" ? "解析中" : "黒板を解析"}
+                    </button>
+                    <button
+                      className={secondaryButtonClass}
+                      type="button"
+                      onClick={runSplitOcr}
+                      disabled={ocrStatus === "loading"}
+                    >
+                      分割して再認識
+                    </button>
+                    <button
+                      className={secondaryButtonClass}
+                      type="button"
+                      onClick={createNotebookFromOcr}
+                      disabled={ocrStatus === "loading" || (!ocrText && !ocrRegions.length)}
+                    >
+                      ノート化
+                    </button>
+                  </div>
                   {ocrStatus === "loading" ? (
                     <div className="rounded-md border border-white/10 bg-white/[0.03] p-3">
                       <div className="flex items-center justify-between gap-3 text-xs text-slate-300">
@@ -424,6 +661,126 @@ export default function BoardPage() {
                   >
                     手入力へ切り替え
                   </button>
+                </div>
+              ) : null}
+
+              {ocrRegions.length ? (
+                <div className="rounded-md border border-white/10 bg-[#0b1118] p-3">
+                  <div className="mb-3 flex items-center justify-between gap-3">
+                    <p className="text-xs font-semibold text-slate-200">
+                      領域別OCR結果
+                    </p>
+                    <span className="rounded-md border border-white/10 bg-white/5 px-2 py-1 text-xs text-slate-300">
+                      平均信頼度{" "}
+                      {Math.round(
+                        ocrRegions.reduce(
+                          (total, region) => total + region.confidence,
+                          0,
+                        ) / ocrRegions.length,
+                      )}
+                      %
+                    </span>
+                  </div>
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    {ocrRegions.map((region) => (
+                      <article
+                        key={region.id}
+                        className={`rounded-md border p-2 ${
+                          region.unknownReason
+                            ? "border-amber-300/30 bg-amber-400/10"
+                            : "border-white/10 bg-white/[0.03]"
+                        }`}
+                      >
+                        <div className="mb-2 flex items-center justify-between gap-2">
+                          <span className="text-xs font-semibold text-white">
+                            {region.label}
+                          </span>
+                          <span className="rounded bg-black/25 px-2 py-1 text-[11px] text-slate-300">
+                            {region.confidence}%
+                          </span>
+                        </div>
+                        <p className="min-h-12 whitespace-pre-wrap break-words text-xs leading-5 text-slate-300">
+                          {region.text || "不明"}
+                        </p>
+                        {region.unknownReason && (
+                          <p className="mt-2 text-[11px] font-medium text-amber-100">
+                            {region.unknownReason}
+                          </p>
+                        )}
+                      </article>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
+
+              {notebookSummary ? (
+                <div className="rounded-md border border-emerald-300/20 bg-emerald-400/10 p-3">
+                  <div className="mb-3 flex items-center justify-between gap-3">
+                    <p className="text-xs font-semibold text-emerald-100">
+                      ノート化結果
+                    </p>
+                    <span className="rounded-md border border-emerald-300/20 bg-black/20 px-2 py-1 text-xs text-emerald-100">
+                      信頼度 {notebookSummary.confidence}%
+                    </span>
+                  </div>
+                  <div className="grid gap-3 text-sm text-slate-200">
+                    <div>
+                      <p className="text-xs font-semibold text-slate-400">教科</p>
+                      <p className="mt-1 font-semibold text-white">
+                        {notebookSummary.subject}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-xs font-semibold text-slate-400">
+                        板書内容
+                      </p>
+                      {notebookSummary.boardContent.length ? (
+                        <ul className="mt-1 grid gap-1">
+                          {notebookSummary.boardContent.map((item) => (
+                            <li key={item} className="break-words">
+                              - {item}
+                            </li>
+                          ))}
+                        </ul>
+                      ) : (
+                        <p className="mt-1 text-slate-500">不明</p>
+                      )}
+                    </div>
+                    <div>
+                      <p className="text-xs font-semibold text-slate-400">
+                        宿題・提出物
+                      </p>
+                      {notebookSummary.tasks.length ? (
+                        <ul className="mt-1 grid gap-1">
+                          {notebookSummary.tasks.map((item) => (
+                            <li key={item} className="break-words">
+                              - {item}
+                            </li>
+                          ))}
+                        </ul>
+                      ) : (
+                        <p className="mt-1 text-slate-500">なし</p>
+                      )}
+                    </div>
+                    {notebookSummary.unknowns.length ? (
+                      <div>
+                        <p className="text-xs font-semibold text-amber-100">
+                          不明
+                        </p>
+                        <ul className="mt-1 grid gap-1">
+                          {notebookSummary.unknowns.map((item) => (
+                            <li key={item} className="break-words text-amber-100">
+                              - {item}
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    ) : null}
+                    <p className="text-xs text-slate-400">
+                      読み取り領域:{" "}
+                      {notebookSummary.sourceRegions.join("、") || "なし"}
+                    </p>
+                  </div>
                 </div>
               ) : null}
 

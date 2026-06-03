@@ -157,6 +157,25 @@ export type BoardOcrResult = {
   periods: BoardOcrPeriod[];
 };
 
+export type BoardOcrRegionResult = {
+  id: string;
+  label: string;
+  row: number;
+  column: number;
+  text: string;
+  confidence: number;
+  unknownReason: string;
+};
+
+export type BoardNotebookSummary = {
+  subject: string;
+  boardContent: string[];
+  tasks: string[];
+  unknowns: string[];
+  sourceRegions: string[];
+  confidence: number;
+};
+
 export type SchoolSettings = {
   schoolName: string;
   grade: string;
