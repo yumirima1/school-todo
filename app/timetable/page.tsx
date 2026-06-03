@@ -83,7 +83,7 @@ export default function TimetablePage() {
     <>
       <PageHeader
         title="時間割管理"
-        description="月曜から金曜の1限から6限を登録し、今日の時間割と次の持ち物に反映します。"
+        description="月曜から金曜の1限から7限を登録し、対象日の時間割と持ち物に反映します。"
       />
 
       <div className="grid gap-4 lg:grid-cols-[0.82fr_1.18fr]">
