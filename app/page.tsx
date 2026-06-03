@@ -1,19 +1,23 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import {
   AlertTriangle,
   BookOpen,
   CalendarClock,
   Camera,
+  CheckCircle2,
   ClipboardList,
   ExternalLink,
   Loader2,
+  Moon,
   PackageCheck,
   RefreshCw,
-  School,
-  Wrench,
+  Sparkles,
+  Sun,
+  Sunset,
+  Zap,
 } from "lucide-react";
 import { TimetableSlot } from "@/components/school-cards";
 import {
@@ -34,7 +38,7 @@ import {
 import { matchMaterialsForPack } from "@/lib/materials";
 import { buildTargetPacks } from "@/lib/prep";
 import { useSchoolData } from "@/lib/school-data";
-import { EventSource, News } from "@/lib/types";
+import { BoardNoteType, EventSource, News, RecurringTask } from "@/lib/types";
 
 type ChikuzenEventsResponse = {
   checkedAt: string;
@@ -42,8 +46,27 @@ type ChikuzenEventsResponse = {
   error?: string;
 };
 
+type CriticalItem = {
+  id: string;
+  label: string;
+  title: string;
+  detail: string;
+  urgent: boolean;
+};
+
+const noteTypeLabels: Record<BoardNoteType, string> = {
+  quiz: "小テスト",
+  prep: "予習",
+  homework: "宿題",
+  item: "持ち物",
+  notice: "連絡",
+};
+
 function formatTargetDateLabel(date: Date, dayLabel: string) {
-  return `${date.getMonth() + 1}月${date.getDate()}日（${dayLabel}）`;
+  return `${date.getMonth() + 1}月${date.getDate()}日 ${dayLabel.replace(
+    "曜",
+    "曜日",
+  )}`;
 }
 
 function sourceLink(source: EventSource) {
@@ -57,7 +80,51 @@ function NewsIcon({ news }: { news: News }) {
   if (news.category === "school") {
     return <CalendarClock size={15} aria-hidden="true" />;
   }
-  return <Wrench size={15} aria-hidden="true" />;
+  return <Sparkles size={15} aria-hidden="true" />;
+}
+
+function getHomeTheme(hour: number) {
+  if (hour >= 19) {
+    return {
+      shell:
+        "from-slate-200 via-blue-100 to-indigo-200 text-slate-950",
+      hero:
+        "border-blue-200/80 bg-gradient-to-br from-slate-800 via-blue-800 to-indigo-700 text-white",
+      orb: "bg-blue-300/40",
+      icon: Moon,
+      mode: "夜モード",
+    };
+  }
+  if (hour >= 14) {
+    return {
+      shell:
+        "from-orange-50 via-sky-50 to-rose-100 text-slate-950",
+      hero:
+        "border-orange-200/80 bg-gradient-to-br from-orange-100 via-sky-100 to-rose-100 text-slate-950",
+      orb: "bg-orange-300/40",
+      icon: Sunset,
+      mode: "放課後モード",
+    };
+  }
+  return {
+    shell:
+      "from-sky-50 via-white to-blue-100 text-slate-950",
+    hero:
+      "border-sky-200/80 bg-gradient-to-br from-white via-sky-50 to-blue-100 text-slate-950",
+    orb: "bg-sky-300/40",
+    icon: Sun,
+    mode: "朝・昼モード",
+  };
+}
+
+function recurringTasksForSubject(tasks: RecurringTask[], label: string) {
+  return tasks
+    .filter((task) => task.active)
+    .map((task) => ({
+      label,
+      title: task.title,
+      detail: task.description,
+    }));
 }
 
 export default function TodayPage() {
@@ -67,6 +134,8 @@ export default function TodayPage() {
   const [discoveredSources, setDiscoveredSources] = useState<EventSource[]>([]);
 
   const now = new Date();
+  const theme = getHomeTheme(now.getHours());
+  const ThemeIcon = theme.icon;
   const targetDate = getSchoolTargetDate(now);
   const targetLabel = getSchoolTargetLabel(now);
   const targetDow = getDayOfWeek(targetDate);
@@ -74,6 +143,7 @@ export default function TodayPage() {
   const targetValue = toDateInputValue(targetDate);
   const className = `${data.settings.grade}${data.settings.className}`;
   const classLabel = `${data.settings.schoolName} ${className}`;
+  const preparationMode = `${targetLabel}の準備`;
 
   const boardMemo =
     data.boardMemos.find(
@@ -92,6 +162,14 @@ export default function TodayPage() {
 
   const targetPacks = buildTargetPacks(targetTimetable, subjectById);
   const hasTargetItems = targetPacks.some((pack) => pack.items.length);
+  const readiness =
+    targetPacks.length > 0
+      ? Math.round(
+          (targetPacks.filter((pack) => pack.items.length > 0).length /
+            targetPacks.length) *
+            100,
+        )
+      : null;
 
   const targetAssignments = data.assignments
     .filter(
@@ -120,18 +198,80 @@ export default function TodayPage() {
     })
     .slice(0, 5);
 
-  const schoolSources = useMemo(() => {
-    const sources = discoveredSources.length
-      ? discoveredSources
-      : data.eventSources;
-    return [...sources]
-      .sort((a, b) =>
-        (b.lastCheckedAt || b.fetchedAt).localeCompare(
-          a.lastCheckedAt || a.fetchedAt,
-        ),
-      )
-      .slice(0, 4);
-  }, [data.eventSources, discoveredSources]);
+  const criticalItems: CriticalItem[] = [];
+  targetAssignments.forEach((assignment) => {
+    criticalItems.push({
+      id: `assignment-${assignment.id}`,
+      label: `${targetLabel}提出`,
+      title: assignment.title,
+      detail: subjectById.get(assignment.subjectId)?.shortName ?? "",
+      urgent: true,
+    });
+  });
+
+  boardMemo?.periods.forEach((period) => {
+    period.notes
+      .filter((note) => !note.done)
+      .forEach((note, index) => {
+        criticalItems.push({
+          id: `board-${period.period}-${index}-${note.text}`,
+          label: noteTypeLabels[note.type],
+          title: note.text,
+          detail: `${period.period}限 ${period.subjectName}`,
+          urgent: note.type !== "notice",
+        });
+      });
+  });
+
+  const seenRecurring = new Set<string>();
+  targetTimetable.forEach((lesson) => {
+    const subject = subjectById.get(lesson.subjectId);
+    if (!subject) {
+      return;
+    }
+    [
+      ...recurringTasksForSubject(subject.recurringAssignments, "固定提出物"),
+      ...recurringTasksForSubject(subject.recurringQuizzes, "固定小テスト"),
+      ...recurringTasksForSubject(subject.recurringPreparations, "固定予習"),
+    ].forEach((task) => {
+      const key = `${subject.id}-${task.label}-${task.title}`;
+      if (seenRecurring.has(key)) {
+        return;
+      }
+      seenRecurring.add(key);
+      criticalItems.push({
+        id: `recurring-${key}`,
+        label: task.label,
+        title: task.title,
+        detail: task.detail || subject.shortName,
+        urgent: task.label !== "固定予習",
+      });
+    });
+  });
+
+  countdownEvents
+    .filter(({ daysLeft }) => daysLeft <= 14)
+    .forEach(({ event, daysLeft }) => {
+      criticalItems.push({
+        id: `event-${event.id}`,
+        label: "近い行事",
+        title: `${event.title}まで${daysLeft}日`,
+        detail: event.date,
+        urgent: true,
+      });
+    });
+
+  const visibleCriticalItems = criticalItems.slice(0, 8);
+  const schoolSourceCandidates = discoveredSources.length
+    ? discoveredSources
+    : data.eventSources;
+  const schoolSources = [...schoolSourceCandidates]
+    .sort((a, b) =>
+      (b.lastCheckedAt || b.fetchedAt).localeCompare(
+        a.lastCheckedAt || a.fetchedAt,
+      ),
+    )
+    .slice(0, 3);
 
   async function refreshChikuzenEvents() {
     setFetchingSchoolEvents(true);
@@ -164,24 +304,93 @@ export default function TodayPage() {
   }
 
   return (
-    <>
-      <header className="mb-4 rounded-lg border border-cyan-300/25 bg-cyan-400/10 p-4">
-        <div className="flex items-center gap-3">
-          <span className="grid size-10 shrink-0 place-items-center rounded-md bg-cyan-400 text-slate-950">
-            <School size={20} aria-hidden="true" />
-          </span>
-          <div className="min-w-0">
-            <h1 className="break-words text-2xl font-semibold tracking-normal text-white">
-              {classLabel}
-            </h1>
-            <p className="mt-1 text-sm text-cyan-100">
-              {targetLabel}: {formatTargetDateLabel(targetDate, targetDayLabel)}
-            </p>
+    <div className={`-mx-4 -mt-5 min-h-screen bg-gradient-to-br ${theme.shell} px-4 pb-10 pt-4 md:-mx-6 md:px-6`}>
+      <section
+        className={`relative overflow-hidden rounded-[2rem] border p-6 shadow-xl shadow-slate-300/30 ${theme.hero}`}
+      >
+        <div
+          className={`absolute -right-12 -top-12 size-40 rounded-full blur-3xl ${theme.orb}`}
+        />
+        <div className="relative">
+          <div className="mb-8 flex items-center justify-between gap-3">
+            <span className="inline-flex items-center gap-2 rounded-full bg-white/60 px-3 py-1.5 text-xs font-semibold text-slate-700 ring-1 ring-white/70 backdrop-blur">
+              <ThemeIcon size={14} aria-hidden="true" />
+              {theme.mode}
+            </span>
+            {readiness !== null && (
+              <span className="rounded-full bg-white/60 px-3 py-1.5 text-xs font-semibold text-slate-700 ring-1 ring-white/70 backdrop-blur">
+                準備率 {readiness}%
+              </span>
+            )}
+          </div>
+          <p className="text-lg font-semibold opacity-80">{classLabel}</p>
+          <h1 className="mt-2 text-5xl font-semibold tracking-normal max-[360px]:text-4xl md:text-6xl">
+            {formatTargetDateLabel(targetDate, targetDayLabel)}
+          </h1>
+          <div className="mt-5 inline-flex items-center gap-2 rounded-full bg-slate-950/80 px-4 py-2 text-base font-semibold text-white shadow-lg shadow-slate-900/15">
+            <Sparkles size={18} aria-hidden="true" />
+            {preparationMode}
           </div>
         </div>
-      </header>
+      </section>
 
-      <section className="grid grid-cols-2 gap-3 max-[420px]:grid-cols-1">
+      <section className="mt-5">
+        <Card
+          className="border-rose-200/80 bg-rose-50/90 shadow-rose-100/80"
+          title="やばいもの"
+          action={
+            <span className="inline-flex items-center gap-1 rounded-full bg-white px-3 py-1 text-xs font-semibold text-rose-600">
+              <Zap size={13} aria-hidden="true" />
+              最優先
+            </span>
+          }
+        >
+          {visibleCriticalItems.length ? (
+            <ul className="grid gap-2">
+              {visibleCriticalItems.map((item) => (
+                <li
+                  key={item.id}
+                  className="flex items-start gap-3 rounded-2xl border border-white/80 bg-white/80 p-3 shadow-sm"
+                >
+                  <span
+                    className={`mt-0.5 grid size-8 shrink-0 place-items-center rounded-full ${
+                      item.urgent
+                        ? "bg-rose-100 text-rose-600"
+                        : "bg-sky-100 text-sky-600"
+                    }`}
+                  >
+                    {item.urgent ? (
+                      <AlertTriangle size={16} aria-hidden="true" />
+                    ) : (
+                      <CheckCircle2 size={16} aria-hidden="true" />
+                    )}
+                  </span>
+                  <div className="min-w-0">
+                    <p className="text-xs font-bold text-rose-500">
+                      {item.label}
+                    </p>
+                    <p className="break-words text-base font-semibold text-slate-950">
+                      {item.title}
+                    </p>
+                    {item.detail && (
+                      <p className="mt-0.5 break-words text-xs font-medium text-slate-500">
+                        {item.detail}
+                      </p>
+                    )}
+                  </div>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <div className="flex items-center gap-3 rounded-2xl bg-white/75 p-4 text-slate-700">
+              <CheckCircle2 className="text-emerald-500" size={22} />
+              <span className="text-base font-semibold">今のところ大丈夫</span>
+            </div>
+          )}
+        </Card>
+      </section>
+
+      <section className="mt-5 grid grid-cols-2 gap-3 max-[420px]:grid-cols-1">
         <Card
           title={`${targetLabel}の時間割`}
           action={
@@ -194,7 +403,7 @@ export default function TodayPage() {
           }
         >
           {boardMemo && (
-            <p className="mb-3 rounded-md border border-cyan-300/25 bg-cyan-400/10 px-3 py-2 text-xs font-medium text-cyan-100">
+            <p className="mb-3 rounded-2xl border border-sky-200 bg-sky-50 px-3 py-2 text-xs font-semibold text-sky-700">
               黒板メモ優先
             </p>
           )}
@@ -232,13 +441,13 @@ export default function TodayPage() {
                 return (
                   <article
                     key={pack.key}
-                    className="rounded-lg border border-white/10 bg-[#0d141c] p-3"
+                    className="rounded-2xl border border-slate-200/80 bg-white/75 p-3 shadow-sm"
                   >
                     <div className="mb-2 flex items-center justify-between gap-2">
-                      <span className="rounded-md bg-white/10 px-2 py-1 text-xs font-semibold text-slate-200">
+                      <span className="rounded-full bg-sky-100 px-2.5 py-1 text-xs font-bold text-sky-700">
                         {pack.period}限
                       </span>
-                      <span className="break-words text-right text-sm font-semibold text-white">
+                      <span className="break-words text-right text-sm font-bold text-slate-900">
                         {pack.subjectName}
                       </span>
                     </div>
@@ -247,9 +456,9 @@ export default function TodayPage() {
                         {materialMatches.map((match) => (
                           <div
                             key={match.material?.id}
-                            className="rounded-md border border-cyan-300/20 bg-cyan-400/[0.06] p-2"
+                            className="rounded-2xl border border-sky-100 bg-sky-50/80 p-2"
                           >
-                            <div className="aspect-[4/3] overflow-hidden rounded bg-black/25">
+                            <div className="aspect-[4/3] overflow-hidden rounded-xl bg-white">
                               {match.material?.imageDataUrl ? (
                                 // eslint-disable-next-line @next/next/no-img-element
                                 <img
@@ -259,7 +468,7 @@ export default function TodayPage() {
                                 />
                               ) : null}
                             </div>
-                            <p className="mt-1 break-words text-[11px] font-medium text-white">
+                            <p className="mt-1 break-words text-[11px] font-bold text-slate-800">
                               {match.material?.shortTitle || match.item}
                             </p>
                           </div>
@@ -271,14 +480,14 @@ export default function TodayPage() {
                         {pack.items.map((item) => (
                           <li
                             key={`${pack.key}-${item}`}
-                            className="rounded-md border border-cyan-300/20 bg-cyan-400/10 px-2 py-1 text-xs text-cyan-50"
+                            className="rounded-full border border-sky-100 bg-sky-50 px-2.5 py-1 text-xs font-semibold text-sky-800"
                           >
                             {item}
                           </li>
                         ))}
                       </ul>
                     ) : (
-                      <p className="text-xs text-slate-500">固定持ち物なし</p>
+                      <p className="text-xs text-slate-400">固定持ち物なし</p>
                     )}
                   </article>
                 );
@@ -290,7 +499,7 @@ export default function TodayPage() {
         </Card>
       </section>
 
-      <section className="mt-4 grid gap-4 lg:grid-cols-[0.85fr_1.15fr]">
+      <section className="mt-5 grid gap-4 lg:grid-cols-[0.85fr_1.15fr]">
         <Card
           title={`${targetLabel}提出のもの`}
           action={
@@ -304,10 +513,10 @@ export default function TodayPage() {
               {targetAssignments.map((assignment) => (
                 <li
                   key={assignment.id}
-                  className="flex items-start gap-2 rounded-lg border border-rose-300/30 bg-rose-500/[0.08] p-3 text-sm font-semibold text-white"
+                  className="flex items-start gap-2 rounded-2xl border border-rose-200 bg-rose-50 p-3 text-sm font-bold text-rose-700"
                 >
                   <AlertTriangle
-                    className="mt-0.5 shrink-0 text-rose-200"
+                    className="mt-0.5 shrink-0"
                     size={16}
                     aria-hidden="true"
                   />
@@ -334,25 +543,31 @@ export default function TodayPage() {
               {countdownEvents.map(({ event, daysLeft }) => (
                 <li
                   key={event.id}
-                  className={`flex items-center justify-between gap-3 rounded-lg border p-3 ${
+                  className={`flex items-center justify-between gap-3 rounded-2xl border p-3 ${
                     daysLeft <= 14
-                      ? "border-amber-300/35 bg-amber-400/[0.10]"
-                      : "border-white/10 bg-[#0d141c]"
+                      ? "border-amber-200 bg-amber-50"
+                      : "border-slate-200 bg-white/70"
                   }`}
                 >
                   <div className="flex min-w-0 items-start gap-2">
                     {daysLeft <= 14 && (
                       <AlertTriangle
-                        className="mt-0.5 shrink-0 text-amber-100"
+                        className="mt-0.5 shrink-0 text-amber-600"
                         size={16}
                         aria-hidden="true"
                       />
                     )}
-                    <span className="break-words text-sm font-semibold text-white">
+                    <span
+                      className={`break-words font-semibold ${
+                        daysLeft <= 14
+                          ? "text-base text-amber-800"
+                          : "text-sm text-slate-700"
+                      }`}
+                    >
                       {event.title}まで{daysLeft}日
                     </span>
                   </div>
-                  <span className="shrink-0 rounded-md bg-black/25 px-2 py-1 text-xs text-slate-300">
+                  <span className="shrink-0 rounded-full bg-white px-2.5 py-1 text-xs font-semibold text-slate-500">
                     {event.date}
                   </span>
                 </li>
@@ -364,7 +579,7 @@ export default function TodayPage() {
         </Card>
       </section>
 
-      <section className="mt-4 grid gap-4 lg:grid-cols-[0.85fr_1.15fr]">
+      <section className="mt-5 grid gap-4 lg:grid-cols-[0.85fr_1.15fr]">
         <Card title="ショートカット">
           <div className="grid grid-cols-2 gap-2">
             <Link className={secondaryButtonClass} href="/board">
@@ -405,7 +620,7 @@ export default function TodayPage() {
           }
         >
           {schoolFetchMessage && (
-            <p className="mb-3 rounded-md border border-cyan-300/25 bg-cyan-400/10 px-3 py-2 text-xs font-medium text-cyan-100">
+            <p className="mb-3 rounded-2xl border border-sky-200 bg-sky-50 px-3 py-2 text-xs font-semibold text-sky-700">
               {schoolFetchMessage}
             </p>
           )}
@@ -414,13 +629,13 @@ export default function TodayPage() {
               {schoolSources.map((source) => (
                 <article
                   key={source.id}
-                  className="rounded-lg border border-white/10 bg-[#0d141c] p-3"
+                  className="rounded-2xl border border-slate-200 bg-white/75 p-3"
                 >
-                  <p className="text-sm font-semibold text-white">
+                  <p className="text-sm font-bold text-slate-900">
                     {source.title}を検出
                   </p>
                   <Link
-                    className="mt-2 inline-flex max-w-full items-center gap-1 break-all text-xs text-cyan-200 underline-offset-4 hover:underline"
+                    className="mt-2 inline-flex max-w-full items-center gap-1 break-all text-xs font-semibold text-sky-700 underline-offset-4 hover:underline"
                     href={sourceLink(source)}
                     target="_blank"
                     rel="noreferrer"
@@ -437,8 +652,9 @@ export default function TodayPage() {
         </Card>
       </section>
 
-      <section className="mt-4">
+      <section className="mt-5">
         <Card
+          className="bg-white/60 shadow-none"
           title="School Dock News"
           action={
             <Link className={secondaryButtonClass} href="/news">
@@ -451,9 +667,9 @@ export default function TodayPage() {
               {latestNews.map((newsItem) => (
                 <li
                   key={newsItem.id}
-                  className="flex items-start gap-2 rounded-md border border-white/10 bg-[#0d141c] px-3 py-2 text-sm text-slate-200"
+                  className="flex items-start gap-2 rounded-2xl border border-slate-200 bg-white/70 px-3 py-2 text-sm text-slate-600"
                 >
-                  <span className="mt-0.5 shrink-0 text-cyan-200">
+                  <span className="mt-0.5 shrink-0 text-sky-600">
                     <NewsIcon news={newsItem} />
                   </span>
                   <span className="break-words">{newsItem.title}</span>
@@ -465,6 +681,6 @@ export default function TodayPage() {
           )}
         </Card>
       </section>
-    </>
+    </div>
   );
 }

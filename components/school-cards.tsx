@@ -25,12 +25,12 @@ export function AssignmentCard({
 
   return (
     <article
-      className={`rounded-lg border p-3 ${
+      className={`rounded-2xl border p-3 shadow-sm ${
         finished
-          ? "border-white/10 bg-white/[0.03]"
+          ? "border-slate-200 bg-white/55"
           : daysLeft <= 1
-            ? "border-rose-300/30 bg-rose-500/[0.08]"
-            : "border-white/10 bg-[#0d141c]"
+            ? "border-rose-200 bg-rose-50"
+            : "border-slate-200 bg-white/75"
       }`}
     >
       <div className="flex items-start justify-between gap-3">
@@ -40,16 +40,16 @@ export function AssignmentCard({
             <DueBadge daysLeft={daysLeft} />
             <PriorityBadge priority={assignment.priority} />
           </div>
-          <h3 className="break-words text-sm font-semibold text-white">
+          <h3 className="break-words text-sm font-bold text-slate-950">
             {assignment.title}
           </h3>
           {assignment.description && (
-            <p className="mt-1 break-words text-xs leading-5 text-slate-400">
+            <p className="mt-1 break-words text-xs leading-5 text-slate-500">
               {assignment.description}
             </p>
           )}
           {assignment.memo && (
-            <p className="mt-2 break-words rounded-md bg-black/20 px-2 py-1.5 text-xs text-slate-300">
+            <p className="mt-2 break-words rounded-2xl bg-slate-100 px-2 py-1.5 text-xs text-slate-500">
               {assignment.memo}
             </p>
           )}
@@ -105,14 +105,14 @@ export function TimetableSlot({
   subject?: Subject;
 }) {
   return (
-    <article className="rounded-lg border border-white/10 bg-[#0d141c] p-3">
+    <article className="rounded-2xl border border-slate-200 bg-white/75 p-3 shadow-sm">
       <div className="flex items-center justify-between gap-3">
-        <span className="rounded-md bg-white/10 px-2 py-1 text-xs font-semibold text-slate-200">
+        <span className="rounded-full bg-sky-100 px-2.5 py-1 text-xs font-bold text-sky-700">
           {item.period}限
         </span>
         <SubjectPill subject={subject} />
       </div>
-      <div className="mt-3 grid gap-1 text-xs text-slate-400">
+      <div className="mt-3 grid gap-1 text-xs font-medium text-slate-500">
         {item.room && <span>教室: {item.room}</span>}
         {item.teacher && <span>先生: {item.teacher}</span>}
         {item.items && <span className="break-words">持ち物: {item.items}</span>}
@@ -131,31 +131,33 @@ export function EventCountdown({
 
   return (
     <article
-      className={`rounded-lg border p-3 ${
+      className={`rounded-2xl border p-3 shadow-sm ${
         urgent
-          ? "border-amber-300/35 bg-amber-400/[0.10]"
-          : "border-white/10 bg-[#0d141c]"
+          ? "border-amber-200 bg-amber-50"
+          : "border-slate-200 bg-white/75"
       }`}
     >
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <p className="text-xs font-medium text-slate-400">
+          <p className="text-xs font-semibold text-slate-500">
             {eventTypeLabels[event.type]} / {event.date}
           </p>
-          <h3 className="mt-1 break-words text-sm font-semibold text-white">
+          <h3 className="mt-1 break-words text-sm font-bold text-slate-950">
             {event.title}
           </h3>
           {event.memo && (
-            <p className="mt-2 break-words text-xs leading-5 text-slate-400">
+            <p className="mt-2 break-words text-xs leading-5 text-slate-500">
               {event.memo}
             </p>
           )}
         </div>
-        <div className="shrink-0 rounded-md border border-white/10 bg-black/25 px-3 py-2 text-center">
-          <span className="block text-xl font-semibold text-cyan-200">
+        <div className="shrink-0 rounded-2xl border border-white/80 bg-white/80 px-3 py-2 text-center">
+          <span className="block text-xl font-bold text-sky-700">
             {daysLeft < 0 ? "-" : daysLeft}
           </span>
-          <span className="block text-[11px] text-slate-400">days</span>
+          <span className="block text-[11px] font-semibold text-slate-400">
+            days
+          </span>
         </div>
       </div>
     </article>
