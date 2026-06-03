@@ -4,6 +4,7 @@ import { FormEvent, useMemo, useState } from "react";
 import {
   AlertTriangle,
   Camera,
+  Check,
   Loader2,
   Plus,
   Save,
@@ -28,6 +29,8 @@ import {
   boardOcrTextToResult,
   boardOcrResultToMemo,
   createBoardNotebookSummary,
+  findSubjectByOcrName,
+  getSubjectCorrectionCandidatesFromText,
   updateBoardNote,
   updateBoardPeriod,
 } from "@/lib/board";
@@ -40,6 +43,7 @@ import {
   BoardNotebookSummary,
   BoardOcrRegionResult,
   BoardOcrResult,
+  BoardSubjectCorrectionCandidate,
 } from "@/lib/types";
 
 type OcrStatus = "idle" | "loading" | "success" | "error";
@@ -145,6 +149,10 @@ function formatNotebookSummary(summary: BoardNotebookSummary) {
   ].join("\n");
 }
 
+function replaceAllText(value: string, source: string, candidate: string) {
+  return source ? value.split(source).join(candidate) : value;
+}
+
 function getTomorrowValue() {
   const tomorrow = new Date();
   tomorrow.setDate(tomorrow.getDate() + 1);
@@ -172,6 +180,16 @@ export default function BoardPage() {
   const sortedMemos = useMemo(() => {
     return [...data.boardMemos].sort((a, b) => b.date.localeCompare(a.date));
   }, [data.boardMemos]);
+
+  const subjectCorrectionCandidates = useMemo(() => {
+    const candidateText = [
+      ocrText,
+      ocrResult?.periods.map((period) => period.subject).join("\n") ?? "",
+      ocrRegions.map((region) => region.text).join("\n"),
+      notebookSummary?.subject ?? "",
+    ].join("\n");
+    return getSubjectCorrectionCandidatesFromText(candidateText);
+  }, [notebookSummary, ocrRegions, ocrResult, ocrText]);
 
   function resetMemo() {
     setMemo(createEmptyBoardMemo(getTomorrowValue(), defaultClassName, data.subjects));
@@ -419,6 +437,79 @@ export default function BoardPage() {
     );
   }
 
+  function applySubjectCorrection(correction: BoardSubjectCorrectionCandidate) {
+    const { source, candidate } = correction;
+    const correctedText = replaceAllText(ocrText, source, candidate);
+    const subject = findSubjectByOcrName(candidate, data.subjects);
+
+    setOcrText(correctedText);
+    setOcrRegions((current) =>
+      current.map((region) => ({
+        ...region,
+        text: replaceAllText(region.text, source, candidate),
+      })),
+    );
+    setOcrResult((current) =>
+      current
+        ? {
+            ...current,
+            periods: current.periods.map((period) => ({
+              ...period,
+              subject: replaceAllText(period.subject, source, candidate),
+              notes: period.notes.map((note) => ({
+                ...note,
+                text: replaceAllText(note.text, source, candidate),
+              })),
+            })),
+          }
+        : current,
+    );
+    setNotebookSummary((current) =>
+      current
+        ? {
+            ...current,
+            subject:
+              current.subject === source
+                ? candidate
+                : replaceAllText(current.subject, source, candidate),
+            boardContent: current.boardContent.map((item) =>
+              replaceAllText(item, source, candidate),
+            ),
+            tasks: current.tasks.map((item) =>
+              replaceAllText(item, source, candidate),
+            ),
+            unknowns: current.unknowns.map((item) =>
+              replaceAllText(item, source, candidate),
+            ),
+          }
+        : current,
+    );
+    setMemo((current) => ({
+      ...current,
+      periods: current.periods.map((period) => {
+        const subjectName = replaceAllText(period.subjectName, source, candidate);
+        return {
+          ...period,
+          subjectName,
+          subjectId:
+            subjectName === candidate && subject ? subject.id : period.subjectId,
+          notes: period.notes.map((note) => ({
+            ...note,
+            text: replaceAllText(note.text, source, candidate),
+          })),
+        };
+      }),
+    }));
+
+    if (correctedText.trim()) {
+      applyOcrResult(
+        boardOcrTextToResult(correctedText, data.subjects),
+        "OCR補正辞書",
+        correctedText,
+      );
+    }
+  }
+
   function switchToManualInput() {
     setOcrStatus("idle");
     setOcrError("");
@@ -661,6 +752,49 @@ export default function BoardPage() {
                   >
                     手入力へ切り替え
                   </button>
+                </div>
+              ) : null}
+
+              {subjectCorrectionCandidates.length ? (
+                <div className="rounded-md border border-violet-300/25 bg-violet-400/10 p-3">
+                  <div className="mb-3">
+                    <p className="text-xs font-semibold text-violet-100">
+                      OCR教科補正候補
+                    </p>
+                    <p className="mt-1 text-xs leading-5 text-slate-400">
+                      筑前高校1年4組の教科辞書と照合しました。保存前に必要な候補だけ適用してください。
+                    </p>
+                  </div>
+                  <div className="grid gap-2">
+                    {subjectCorrectionCandidates.map((correction) => (
+                      <article
+                        key={`${correction.source}-${correction.candidate}`}
+                        className="grid gap-2 rounded-md border border-white/10 bg-[#0b1118] p-2 sm:grid-cols-[1fr_auto]"
+                      >
+                        <div className="min-w-0">
+                          <p className="break-words text-sm font-semibold text-white">
+                            {correction.source} → {correction.candidate}
+                          </p>
+                          <div className="mt-1 flex flex-wrap gap-2 text-[11px] text-slate-400">
+                            <span className="rounded border border-white/10 bg-white/5 px-2 py-0.5">
+                              {correction.reason}
+                            </span>
+                            <span className="rounded border border-white/10 bg-white/5 px-2 py-0.5">
+                              類似度 {correction.score}%
+                            </span>
+                          </div>
+                        </div>
+                        <button
+                          className={secondaryButtonClass}
+                          type="button"
+                          onClick={() => applySubjectCorrection(correction)}
+                        >
+                          <Check size={16} aria-hidden="true" />
+                          適用
+                        </button>
+                      </article>
+                    ))}
+                  </div>
                 </div>
               ) : null}
 

@@ -176,6 +176,14 @@ export type BoardNotebookSummary = {
   confidence: number;
 };
 
+export type BoardSubjectCorrectionCandidate = {
+  source: string;
+  candidate: string;
+  score: number;
+  reason: string;
+  exact: boolean;
+};
+
 export type SchoolSettings = {
   schoolName: string;
   grade: string;
