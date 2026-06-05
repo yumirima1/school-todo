@@ -1,48 +1,92 @@
 # School Dock
 
-School Dock is a school life dashboard built with Next.js App Router, TypeScript, Tailwind CSS, and localStorage.
+Status: Archived / Local Use
 
-## Features
+School Dock は現在ローカル運用へ移行しました。
 
-- Today's dashboard with timetable, due assignments, next preparation, and upcoming event countdown
-- Assignment creation, editing, deletion, completion toggle, priority, status, and memo
-- Timetable registration for weekdays and periods
-- Event registration with countdown display
-- Phase 2 placeholder pages for study tasks, calendar, subjects, and settings
+本リポジトリは学校生活支援アプリの実験・研究用として維持します。
+公開運用は終了しました。
 
-## Getting Started
+今後は公開サービスではなく、学校向け機能の研究所として利用します。
 
-Install dependencies:
+## 主な機能
+
+- 黒板OCR
+- 教材ライブラリ
+- 提出物管理
+- 行事取得
+- 時間割管理
+- 黒板メモ
+- 行事カウントダウン
+- School Dock News
+
+## ローカル起動
+
+インストール:
 
 ```bash
 npm install
 ```
 
-Start the development server:
+起動:
 
 ```bash
 npm run dev
 ```
 
-Open `http://localhost:3000` in your browser.
+アクセス:
 
-## Checks
+```text
+http://localhost:3000
+```
 
-Run lint:
+## スマホ確認
+
+同一Wi-Fi内でPCから起動します。
+
+```bash
+npm run dev -- --hostname 0.0.0.0
+```
+
+PCのIPアドレスを確認します。
+
+Windows:
+
+```powershell
+ipconfig
+```
+
+例:
+
+```text
+192.168.1.5
+```
+
+スマホから以下へアクセスします。
+
+```text
+http://192.168.1.5:3000
+```
+
+## 確認コマンド
+
+lint:
 
 ```bash
 npm run lint
 ```
 
-Run a production build:
+build:
 
 ```bash
 npm run build
 ```
 
-## Notes
+## 運用メモ
 
-- Data is saved in the browser's localStorage.
-- Most features run without environment variables.
-- Blackboard image reading runs with free browser-side Tesseract.js OCR by default.
-- Optional OpenAI Vision analysis uses the server-side `OPENAI_API_KEY` environment variable. If it is not set, `/board` automatically falls back to Tesseract.js.
+- データはブラウザのlocalStorageに保存します。
+- 通常利用に環境変数は不要です。
+- 黒板画像読み取りは無料のブラウザ側Tesseract.js OCRを標準で使います。
+- `OPENAI_API_KEY` が設定されている場合のみ、サーバー側のOpenAI Vision解析を利用できます。
+- GitHubリポジトリはバックアップ、ポートフォリオ、将来の再公開に備えて維持します。
+- Vercelプロジェクトの削除はこのリポジトリでは行いません。必要な場合はユーザーがVercel側で手動実施します。
